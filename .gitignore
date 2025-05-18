@@ -1,0 +1,28 @@
+cat <<EOF > .gitignore
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# Output from go build
+/build/
+/bin/
+/dist/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+
+# Dependency directories (go mod handles this)
+vendor/
+
+# Logs
+*.log
+
+# OS metadata
+.DS_Store
+EOF

@@ -1,0 +1,35 @@
+.
+├── address
+│   ├── address_test.go
+│   └── address.go
+├── board
+│   ├── board.go
+│   └── state.go
+├── cmd
+│   └── main.go
+├── config
+├── go.mod
+├── io
+├── pieces
+│   ├── bishop.go
+│   ├── king.go
+│   ├── knight.go
+│   ├── pawn.go
+│   ├── piece.go
+│   ├── queen.go
+│   ├── rook.go
+│   └── utils.go
+├── png
+│   └── png.go
+├── shell
+│   ├── cli.go
+│   ├── renderer.go
+│   └── session.go
+├── socrates
+│   ├── endgame.go
+│   ├── log.go
+│   ├── rules.go
+│   └── socrates.go
+└── tree
+
+10 directories, 23 files
