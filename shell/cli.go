@@ -30,7 +30,9 @@ func showWelcome() {
 	fmt.Println("----------------------------------------------")
 	fmt.Println("Enter 'b' to see board")
 	fmt.Println("Enter 'q' to quit")
-	fmt.Println("Enter moves like: m e2e4")
+	fmt.Println("Enter 'u' to undo last move")
+	fmt.Println("Enter 'h' to view move history")
+	fmt.Println("Enter moves like: m e2e4 or simply e2e4")
 	fmt.Println()
 }
 
@@ -52,7 +54,7 @@ func listen(session *GameSession, reader *bufio.Reader) {
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(input)
 
-	if shouldQuit := handleInput(input, session); shouldQuit {
+	if handleInput(input, session) {
 		os.Exit(0)
 	}
 
@@ -67,40 +69,48 @@ func handleInput(input string, session *GameSession) bool {
 
 	input = normalizeInput(input)
 
-	switch input {
-	case "b":
+	if input == "b" {
 		showBoard(session)
-	case "q":
-		session.Renderer.Message("\U0001F44B Goodbye!")
+		return false
+	}
+
+	if input == "q" {
+		session.Renderer.Message("👋 Goodbye!")
 		return true
-	case "h":
+	}
+
+	if input == "h" {
 		session.Log.PrintLog()
-	case "u":
+		return false
+	}
+
+	if input == "u" {
 		if !session.Engine.UndoMove() {
 			session.Renderer.Message("Nothing to undo.")
 		}
 		showBoard(session)
-	default:
-		if strings.HasPrefix(input, "m ") {
-			err := socrates.Dialog(input, session.Engine)
-			if err != nil {
-				session.Renderer.Message(err.Error())
-			} else {
-				showBoard(session)
-				if session.Engine.IsCheckmate() {
-					session.Renderer.Message("\U0001F3C1 CHECKMATE! " + colorName(session.Engine.GetTurn()) + " is defeated.")
-					return true
-				}
-				if session.Engine.IsStalemate() {
-					session.Renderer.Message("\u26D4 STALEMATE. The position is drawn.")
-					return true
-				}
-			}
-		} else {
-			session.Renderer.Message("Unknown command. Try 'm e2e4', 'u', 'h', or 'q'")
-		}
+		return false
 	}
 
+	if strings.HasPrefix(input, "m ") {
+		err := socrates.Dialog(input, session.Engine)
+		if err != nil {
+			session.Renderer.Message(err.Error())
+			return false
+		}
+		showBoard(session)
+		if session.Engine.IsCheckmate() {
+			session.Renderer.Message("🏁 CHECKMATE! " + colorName(session.Engine.GetTurn()) + " is defeated.")
+			return true
+		}
+		if session.Engine.IsStalemate() {
+			session.Renderer.Message("⛔ STALEMATE. The position is drawn.")
+			return true
+		}
+		return false
+	}
+
+	session.Renderer.Message("Unknown command. Try 'm e2e4', 'u', 'h', or 'q'")
 	return false
 }
 
