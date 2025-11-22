@@ -51,9 +51,17 @@ func (r *RuleEngine) MakeMove(from, to address.Addr, promoChar rune) bool {
 	targetPos := to
 	rookMove := (*CastleMove)(nil)
 
+	oldCastle := r.State.CastlingRights
+	oldEP := r.State.GetEnPassant()
+
+	hash := r.hash
+	// Remove old state flags
+	hash = HashToggleCastling(hash, oldCastle)
+	hash = HashToggleEP(hash, oldEP)
+
 	// 50-Move Rule Tracking
 	_, isPawn := moving.(*pieces.Pawn)
-	isCapture := target != nil // [FIX] target is now used here
+	isCapture := target != nil
 
 	// --- Logic: En Passant Capture ---
 	if isPawn {
@@ -63,7 +71,8 @@ func (r *RuleEngine) MakeMove(from, to address.Addr, promoChar rune) bool {
 				captureRankDir = 1
 			}
 			if victimPos, ok := to.Shift(captureRankDir, 0); ok {
-				target = r.Board.PieceAt(victimPos) // [FIX] target updated
+				target = r.Board.PieceAt(victimPos)
+				hash = HashTogglePiece(hash, target, victimPos)
 				r.Board.Clear(victimPos)
 				isCapture = true
 				targetPos = victimPos
@@ -84,10 +93,11 @@ func (r *RuleEngine) MakeMove(from, to address.Addr, promoChar rune) bool {
 				rookFrom = address.MakeAddr(rank, 0)
 				rookTo = address.MakeAddr(rank, 3)
 			}
-			// Move Rook
 			rook := r.Board.PieceAt(rookFrom)
 			r.Board.SetPiece(rookTo, rook)
 			r.Board.Clear(rookFrom)
+			hash = HashTogglePiece(hash, rook, rookFrom)
+			hash = HashTogglePiece(hash, rook, rookTo)
 			rookMove = &CastleMove{From: rookFrom, To: rookTo}
 		}
 	}
@@ -105,24 +115,41 @@ func (r *RuleEngine) MakeMove(from, to address.Addr, promoChar rune) bool {
 		})
 	}
 
+	// Hash out moving and captured pieces at original squares
+	hash = HashTogglePiece(hash, moving, from)
+	if target != nil {
+		hash = HashTogglePiece(hash, target, to)
+	}
+
 	// Apply Main Move
 	r.Board.SetPiece(to, moving)
 	r.Board.Clear(from)
+
+	finalPiece := moving
+	// --- Logic: Promotion ---
+	if isPawn {
+		rank := to.Rank
+		if (moving.Color() == pieces.WHITE && rank == 7) || (moving.Color() == pieces.BLACK && rank == 0) {
+			newPiece := pieces.FromChar(promoChar, moving.Color())
+			r.Board.SetPiece(to, newPiece)
+			finalPiece = newPiece
+		}
+	}
+
+	// Hash in final piece at destination
+	hash = HashTogglePiece(hash, finalPiece, to)
 
 	// --- State Updates ---
 	r.updateEnPassantState(moving, from, to)
 	r.updateCastlingRights(moving, from, target, targetPos)
 	r.State.IncrementClock(isPawn, isCapture)
 
-	// --- Logic: Promotion ---
-	if isPawn {
-		rank := to.Rank
-		if (moving.Color() == pieces.WHITE && rank == 7) || (moving.Color() == pieces.BLACK && rank == 0) {
-			// Promote based on input char, default to Queen
-			newPiece := pieces.FromChar(promoChar, moving.Color())
-			r.Board.SetPiece(to, newPiece)
-		}
-	}
+	// Add new state flags
+	hash = HashToggleCastling(hash, r.State.CastlingRights)
+	hash = HashToggleEP(hash, r.State.GetEnPassant())
+
+	// Toggle turn
+	hash = HashToggleTurn(hash)
 
 	r.Turn = 1 - r.Turn
 	r.State.Turn = r.Turn
@@ -130,7 +157,8 @@ func (r *RuleEngine) MakeMove(from, to address.Addr, promoChar rune) bool {
 		r.State.FullmoveNumber++
 	}
 
-	r.refreshHashHistory()
+	r.hash = hash
+	r.hashHistory = append(r.hashHistory, hash)
 
 	return true
 }
@@ -399,10 +427,12 @@ func (r *RuleEngine) refreshHashHistory() {
 // nullMove switches turn without moving a piece (for null-move pruning).
 func (r *RuleEngine) nullMove() StateSnapshot {
 	snap := snapshotState(r.State)
+	r.hash = HashToggleEP(r.hash, r.State.GetEnPassant())
 	r.State.SetEnPassant(nil)
 	r.Turn = 1 - r.Turn
 	r.State.Turn = r.Turn
-	r.refreshHashHistory()
+	r.hash = HashToggleTurn(r.hash)
+	r.hashHistory = append(r.hashHistory, r.hash)
 	return snap
 }
 
@@ -413,6 +443,9 @@ func (r *RuleEngine) undoNullMove(snap StateSnapshot) {
 	if len(r.hashHistory) > 1 {
 		r.hashHistory = r.hashHistory[:len(r.hashHistory)-1]
 		r.hash = r.hashHistory[len(r.hashHistory)-1]
+	} else {
+		r.hash = computeHash(r.Board, r.State, r.Turn)
+		r.hashHistory = []uint64{r.hash}
 	}
 }
 
