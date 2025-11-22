@@ -20,6 +20,9 @@ type RuleEngine struct {
 	hashHistory []uint64
 
 	tt map[uint64]ttEntry
+
+	history [2][64][64]int // color, from, to
+	killers [128][2]SimpleMove
 }
 
 func New(b *board.Board) *RuleEngine {
@@ -398,6 +401,17 @@ func (r *RuleEngine) resetHashHistory() {
 	r.hashHistory = []uint64{r.hash}
 	if r.tt == nil {
 		r.tt = make(map[uint64]ttEntry)
+	}
+	for c := 0; c < 2; c++ {
+		for i := 0; i < 64; i++ {
+			for j := 0; j < 64; j++ {
+				r.history[c][i][j] = 0
+			}
+		}
+	}
+	for i := 0; i < len(r.killers); i++ {
+		r.killers[i][0] = SimpleMove{}
+		r.killers[i][1] = SimpleMove{}
 	}
 }
 

@@ -38,8 +38,7 @@ func (r *RuleEngine) Search(depth int) SearchResult {
 
 	bestMove := SearchResult{Score: MinScore}
 
-	moves := r.GenerateLegalMoves()
-	moves = r.orderMoves(moves)
+	moves := r.orderMoves(r.GenerateLegalMoves(), 0)
 
 	// No legal moves: return mate/stalemate immediately.
 	if len(moves) == 0 {
@@ -100,13 +99,12 @@ func (r *RuleEngine) negamax(depth, ply, alpha, beta int) (int, int) {
 
 	// 1. Leaf Node: Return Static Evaluation
 	if depth == 0 {
-		score, qNodes := r.quiesce(alpha, beta)
+		score, qNodes := r.quiesce(ply, alpha, beta)
 		return score, nodes + qNodes
 	}
 
 	// 2. Generate Moves
-	moves := r.GenerateLegalMoves()
-	moves = r.orderMoves(moves)
+	moves := r.orderMoves(r.GenerateLegalMoves(), ply)
 
 	// 3. Game Over Detection
 	if len(moves) == 0 {
@@ -146,10 +144,16 @@ func (r *RuleEngine) negamax(depth, ply, alpha, beta int) (int, int) {
 
 		if score >= beta {
 			r.storeTT(r.hash, depth, toTTScore(score, ply), ttLower, m)
+			if !r.isCapture(m) {
+				r.storeKiller(ply, m)
+			}
 			return beta, nodes // Pruning
 		}
 		if score > alpha {
 			alpha = score
+			if !r.isCapture(m) {
+				r.bumpHistory(m)
+			}
 		}
 	}
 	r.storeTT(r.hash, depth, toTTScore(alpha, ply), flagFrom(alpha, beta, alphaOrig), SimpleMove{})
@@ -168,7 +172,7 @@ func (r *RuleEngine) evaluateRelative() int {
 }
 
 // quiesce searches capture sequences to reduce horizon effects.
-func (r *RuleEngine) quiesce(alpha, beta int) (int, int) {
+func (r *RuleEngine) quiesce(ply, alpha, beta int) (int, int) {
 	nodes := 1
 	score := r.evaluateRelative()
 	inCheck := r.IsInCheck(r.Turn)
@@ -192,17 +196,17 @@ func (r *RuleEngine) quiesce(alpha, beta int) (int, int) {
 	var moves []SimpleMove
 	if inCheck {
 		// When in check, search all legal replies (ordered).
-		moves = r.orderMoves(r.GenerateLegalMoves())
+		moves = r.orderMoves(r.GenerateLegalMoves(), ply)
 		if len(moves) == 0 {
 			return -MateScore, nodes
 		}
 	} else {
-		moves = r.GenerateCaptureMoves()
+		moves = r.GenerateCaptureMoves(ply)
 	}
 
 	for _, m := range moves {
 		r.MakeMove(m.From, m.To, m.Promo)
-		childScore, childNodes := r.quiesce(-beta, -alpha)
+		childScore, childNodes := r.quiesce(ply+1, -beta, -alpha)
 		nodes += childNodes
 		r.UndoMove()
 
@@ -271,7 +275,7 @@ func (r *RuleEngine) GenerateLegalMoves() []SimpleMove {
 }
 
 // GenerateCaptureMoves returns only captures/promotions to speed quiescence.
-func (r *RuleEngine) GenerateCaptureMoves() []SimpleMove {
+func (r *RuleEngine) GenerateCaptureMoves(ply int) []SimpleMove {
 	moves := make([]SimpleMove, 0, 32)
 	r.Board.ForEachPiece(func(from address.Addr, p pieces.Piece) {
 		if p.Color() != r.Turn {
@@ -288,7 +292,7 @@ func (r *RuleEngine) GenerateCaptureMoves() []SimpleMove {
 			}
 		}
 	})
-	return r.orderMoves(moves)
+	return r.orderMoves(moves, ply)
 }
 
 func isPromo(p pieces.Piece, to address.Addr) bool {
@@ -331,8 +335,8 @@ func flagFrom(score, beta, alphaOrig int) int {
 	return ttExact
 }
 
-// orderMoves scores moves for better pruning: TT move first, then MVV-LVA captures, then promotions.
-func (r *RuleEngine) orderMoves(moves []SimpleMove) []SimpleMove {
+// orderMoves scores moves for better pruning: TT move first, then MVV-LVA captures, then promotions, then history/killer.
+func (r *RuleEngine) orderMoves(moves []SimpleMove, ply int) []SimpleMove {
 	ttMove := SimpleMove{}
 	if entry, ok := r.tt[r.hash]; ok {
 		ttMove = entry.move
@@ -343,7 +347,7 @@ func (r *RuleEngine) orderMoves(moves []SimpleMove) []SimpleMove {
 	}
 	scoredMoves := make([]scored, 0, len(moves))
 	for _, m := range moves {
-		scoredMoves = append(scoredMoves, scored{m: m, score: r.moveScore(m, ttMove)})
+		scoredMoves = append(scoredMoves, scored{m: m, score: r.moveScore(m, ttMove, ply)})
 	}
 	sort.Slice(scoredMoves, func(i, j int) bool {
 		return scoredMoves[i].score > scoredMoves[j].score
@@ -355,11 +359,18 @@ func (r *RuleEngine) orderMoves(moves []SimpleMove) []SimpleMove {
 	return ordered
 }
 
-func (r *RuleEngine) moveScore(m SimpleMove, ttMove SimpleMove) int {
+func (r *RuleEngine) moveScore(m SimpleMove, ttMove SimpleMove, ply int) int {
 	score := 0
 	// TT move bonus
 	if m.From == ttMove.From && m.To == ttMove.To && m.Promo == ttMove.Promo {
 		score += 100000
+	}
+	// Killer bonus for this ply
+	idx := ply % len(r.killers)
+	for _, km := range r.killers[idx] {
+		if km.From == m.From && km.To == m.To && km.Promo == m.Promo {
+			score += 80000
+		}
 	}
 	attacker := r.Board.PieceAt(m.From)
 	target := r.Board.PieceAt(m.To)
@@ -373,6 +384,10 @@ func (r *RuleEngine) moveScore(m SimpleMove, ttMove SimpleMove) int {
 	}
 	if m.Promo != 0 {
 		score += 900 // prefer promotions
+	}
+	// History heuristic for quiets
+	if target == nil {
+		score += r.history[r.Turn][m.From.Index()][m.To.Index()]
 	}
 	return score
 }
@@ -392,4 +407,17 @@ func pieceValue(p pieces.Piece) int {
 	default:
 		return 0
 	}
+}
+
+func (r *RuleEngine) storeKiller(ply int, m SimpleMove) {
+	idx := ply % len(r.killers)
+	if r.killers[idx][0].From == m.From && r.killers[idx][0].To == m.To && r.killers[idx][0].Promo == m.Promo {
+		return
+	}
+	r.killers[idx][1] = r.killers[idx][0]
+	r.killers[idx][0] = m
+}
+
+func (r *RuleEngine) bumpHistory(m SimpleMove) {
+	r.history[r.Turn][m.From.Index()][m.To.Index()] += 1
 }
