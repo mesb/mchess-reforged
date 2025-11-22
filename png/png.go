@@ -56,7 +56,8 @@ func Load(engine *socrates.RuleEngine, filename string) error {
 		}
 		from := parseSquare(word[:2])
 		to := parseSquare(word[2:])
-		if !engine.MakeMove(from, to) {
+		// Inside pgn.Load loop:
+		if !engine.MakeMove(from, to, 0) { // Pass 0 for no specific promotion preference
 			return fmt.Errorf("illegal move in PGN: %s", word)
 		}
 	}

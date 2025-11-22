@@ -24,7 +24,8 @@ func New(b *board.Board) *RuleEngine {
 	}
 }
 
-func (r *RuleEngine) MakeMove(from, to address.Addr) bool {
+// MakeMove executes a move. promoChar is optional (e.g., 'q', 'n').
+func (r *RuleEngine) MakeMove(from, to address.Addr, promoChar rune) bool {
 	if !r.IsLegalMove(from, to) {
 		return false
 	}
@@ -32,9 +33,9 @@ func (r *RuleEngine) MakeMove(from, to address.Addr) bool {
 	moving := r.Board.PieceAt(from)
 	target := r.Board.PieceAt(to)
 
-	// Flag for 50-move rule
+	// 50-Move Rule Tracking
 	_, isPawn := moving.(*pieces.Pawn)
-	isCapture := target != nil
+	isCapture := target != nil // [FIX] target is now used here
 
 	// --- Logic: En Passant Capture ---
 	if isPawn {
@@ -44,7 +45,7 @@ func (r *RuleEngine) MakeMove(from, to address.Addr) bool {
 				captureRankDir = 1
 			}
 			if victimPos, ok := to.Shift(captureRankDir, 0); ok {
-				target = r.Board.PieceAt(victimPos) // Capture the pawn behind
+				target = r.Board.PieceAt(victimPos) // [FIX] target updated
 				r.Board.Clear(victimPos)
 				isCapture = true
 			}
@@ -57,7 +58,6 @@ func (r *RuleEngine) MakeMove(from, to address.Addr) bool {
 		if df == 2 || df == -2 {
 			rank := from.Rank
 			var rookFrom, rookTo address.Addr
-
 			if df == 2 { // Kingside
 				rookFrom = address.MakeAddr(rank, 7)
 				rookTo = address.MakeAddr(rank, 5)
@@ -65,16 +65,16 @@ func (r *RuleEngine) MakeMove(from, to address.Addr) bool {
 				rookFrom = address.MakeAddr(rank, 0)
 				rookTo = address.MakeAddr(rank, 3)
 			}
-
+			// Move Rook
 			rook := r.Board.PieceAt(rookFrom)
 			r.Board.SetPiece(rookTo, rook)
 			r.Board.Clear(rookFrom)
 		}
 	}
 
-	// Record Move
+	// Record Move (Must happen before board update destroys 'from' state)
 	if r.Log != nil {
-		r.Log.Record(from, to, moving, target)
+		r.Log.Record(from, to, moving, target) // [FIX] target used in log
 	}
 
 	// Apply Main Move
@@ -84,22 +84,20 @@ func (r *RuleEngine) MakeMove(from, to address.Addr) bool {
 	// --- State Updates ---
 	r.updateEnPassantState(moving, from, to)
 	r.updateCastlingRights(moving, from)
-
-	// Update 50-move clock
 	r.State.IncrementClock(isPawn, isCapture)
 
-	// Auto-Queen (Simplified for CLI)
+	// --- Logic: Promotion ---
 	if isPawn {
 		rank := to.Rank
 		if (moving.Color() == pieces.WHITE && rank == 7) || (moving.Color() == pieces.BLACK && rank == 0) {
-			r.Board.SetPiece(to, pieces.NewQueen(moving.Color()))
+			// Promote based on input char, default to Queen
+			newPiece := pieces.FromChar(promoChar, moving.Color())
+			r.Board.SetPiece(to, newPiece)
 		}
 	}
 
 	r.Turn = 1 - r.Turn
 	r.State.Turn = r.Turn
-
-	// Increment full move number if it was Black's turn
 	if moving.Color() == pieces.BLACK {
 		r.State.FullmoveNumber++
 	}
@@ -124,7 +122,6 @@ func (r *RuleEngine) updateCastlingRights(p pieces.Piece, from address.Addr) {
 		r.State.RevokeCastling(p.Color())
 		return
 	}
-
 	if _, ok := p.(*pieces.Rook); ok {
 		if from.Equals(address.MakeAddr(0, 7)) {
 			r.State.RevokeSide("K")
@@ -150,15 +147,12 @@ func (r *RuleEngine) IsLegalMove(from, to address.Addr) bool {
 	legalMoves := piece.ValidMoves(from, r.Board, r.State)
 	for _, move := range legalMoves {
 		if move.Equals(to) {
-			// Special check for Castling: Cannot castle out of, through, or into check.
 			if _, isKing := piece.(*pieces.King); isKing {
 				df := int(to.File) - int(from.File)
 				if df == 2 || df == -2 {
-					// 1. Cannot castle if currently in check
 					if r.IsInCheck(r.Turn) {
 						return false
 					}
-					// 2. Cannot castle through check (check the middle square)
 					midFile := int(from.File) + (df / 2)
 					midSquare := address.MakeAddr(from.Rank, address.File(midFile))
 					if r.WouldBeInCheck(from, midSquare) {
@@ -166,14 +160,11 @@ func (r *RuleEngine) IsLegalMove(from, to address.Addr) bool {
 					}
 				}
 			}
-
 			return !r.WouldBeInCheck(from, to)
 		}
 	}
 	return false
 }
-
-// --- Existing Helper Methods (Required for Compilation) ---
 
 func (r *RuleEngine) GetTurn() int { return r.Turn }
 

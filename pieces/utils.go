@@ -3,7 +3,6 @@
 package pieces
 
 // CloneWithColor creates a new piece of the same kind but with a new color.
-// This is used during board initialization or pawn promotion logic.
 func CloneWithColor(p Piece, color int) Piece {
 	switch t := p.(type) {
 	case *Rook:
@@ -19,7 +18,21 @@ func CloneWithColor(p Piece, color int) Piece {
 	case *Pawn:
 		return NewPawn(color)
 	default:
-		_ = t // prevent unused variable warning
+		_ = t
 		return nil
+	}
+}
+
+// FromChar returns a new piece instance based on a character code (q, r, b, n).
+func FromChar(c rune, color int) Piece {
+	switch c {
+	case 'r', 'R':
+		return NewRook(color)
+	case 'b', 'B':
+		return NewBishop(color)
+	case 'n', 'N':
+		return NewKnight(color)
+	default:
+		return NewQueen(color)
 	}
 }
