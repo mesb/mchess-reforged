@@ -112,7 +112,11 @@ func handleGo(eng *socrates.RuleEngine, args []string) {
 		depth, res.Score, res.Nodes, elapsed.Milliseconds())
 
 	// Output the best move found
-	fmt.Printf("bestmove %s%s\n", squareString(res.From), squareString(res.To))
+	moveStr := squareString(res.From) + squareString(res.To)
+	if res.Promo != 0 {
+		moveStr += string(res.Promo)
+	}
+	fmt.Printf("bestmove %s\n", moveStr)
 }
 
 func squareString(a address.Addr) string {

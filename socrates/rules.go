@@ -130,6 +130,9 @@ func (r *RuleEngine) MakeMove(from, to address.Addr, promoChar rune) bool {
 	if isPawn {
 		rank := to.Rank
 		if (moving.Color() == pieces.WHITE && rank == 7) || (moving.Color() == pieces.BLACK && rank == 0) {
+			if promoChar == 0 {
+				promoChar = 'q'
+			}
 			newPiece := pieces.FromChar(promoChar, moving.Color())
 			r.Board.SetPiece(to, newPiece)
 			finalPiece = newPiece

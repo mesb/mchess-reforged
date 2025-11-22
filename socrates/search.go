@@ -24,6 +24,7 @@ type SearchResult struct {
 	To    address.Addr
 	Score int
 	Nodes int // how many positions were analyzed
+	Promo rune
 }
 
 // Search runs the Alpha-Beta Negamax algorithm to a fixed depth.
@@ -66,6 +67,7 @@ func (r *RuleEngine) Search(depth int) SearchResult {
 			bestMove.From = m.From
 			bestMove.To = m.To
 			bestMove.Score = score
+			bestMove.Promo = m.Promo
 		}
 	}
 
