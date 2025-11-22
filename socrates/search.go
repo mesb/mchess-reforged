@@ -137,6 +137,10 @@ func (r *RuleEngine) negamax(depth, ply, alpha, beta int) (int, int) {
 		}
 		childDepth := depth - 1 - reduction
 		score, childNodes := r.negamax(childDepth, ply+1, -beta, -alpha)
+		// If reduced search raises alpha, re-search at full depth to confirm.
+		if reduction > 0 && score > alpha {
+			score, childNodes = r.negamax(depth-1, ply+1, -beta, -alpha)
+		}
 		nodes += childNodes
 		r.UndoMove()
 		moveIndex++
@@ -322,7 +326,11 @@ func (r *RuleEngine) isCapture(m SimpleMove) bool {
 
 func (r *RuleEngine) storeTT(hash uint64, depth int, score int, flag int, move SimpleMove) {
 	if old, ok := r.tt[hash]; ok {
+		// Prefer newer generation; if same gen prefer deeper; if older but much deeper, keep.
 		if old.gen == r.gen && old.depth > depth {
+			return
+		}
+		if old.gen < r.gen && old.depth > depth+3 {
 			return
 		}
 	}
@@ -440,5 +448,23 @@ func (r *RuleEngine) isGoodCapture(m SimpleMove) bool {
 	if target == nil {
 		return true
 	}
-	return pieceValue(target) >= pieceValue(attacker)
+	attackerVal := pieceValue(attacker)
+	targetVal := pieceValue(target)
+	if targetVal >= attackerVal {
+		return true
+	}
+
+	// Check if capturing piece would be immediately captured back by less or equal value.
+	fromPiece := attacker
+	toPiece := target
+	r.Board.SetPiece(m.To, attacker)
+	r.Board.Clear(m.From)
+	attacked := r.isSquareAttacked(m.To, 1-attacker.Color())
+	r.Board.SetPiece(m.From, fromPiece)
+	r.Board.SetPiece(m.To, toPiece)
+
+	if !attacked {
+		return true
+	}
+	return targetVal-attackerVal >= 0
 }

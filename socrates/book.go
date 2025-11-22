@@ -9,8 +9,17 @@ import (
 
 // Minimal opening book keyed by FEN (piece placement + turn only for simplicity).
 var miniBook = map[string][]string{
-	"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w":     {"e2e4", "d2d4", "c2c4", "g1f3"},
-	"rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w": {"g1f3", "d2d4"},
+	"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w":       {"e2e4", "d2d4", "c2c4", "g1f3"},
+	"rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w":   {"g1f3", "d2d4"},
+	"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b":     {"c7c5", "e7e5", "e7e6", "c7c6"},
+	"rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b":     {"d7d5", "g8f6", "e7e6"},
+	"rnbqkbnr/pppppp1p/6p1/8/4P3/5N2/PPPP1PPP/RNBQKB1R b": {"d7d6", "c7c5"},
+	"rnbqkbnr/pp1ppppp/2p5/8/4P3/5N2/PPPP1PPP/RNBQKB1R b": {"d7d5", "g8f6"},
+	"rnbqkbnr/pppppppp/8/8/4P3/4P3/PPPP2PP/RNBQKBNR b":    {"d7d5", "g8f6"},
+	"rnbqkbnr/ppp1pppp/3p4/8/3PP3/8/PPP2PPP/RNBQKBNR b":   {"g8f6", "c7c5"},
+	"rnbqkbnr/pppppppp/8/8/2P5/8/PP1PPPPP/RNBQKBNR b":     {"e7e5", "c7c5"},
+	"rnbqkbnr/pppppppp/8/8/4P3/8/PPPPQPPP/RNB1KBNR b":     {"d7d5", "c7c5", "g8f6"},
+	"rnbqkbnr/pp1ppppp/2p5/8/2P5/8/PP1PPPPP/RNBQKBNR w":   {"d2d4", "g1f3"},
 }
 
 // BookMove returns a legal book move if available.
