@@ -37,7 +37,7 @@ func TestHandleGetStateAndMove(t *testing.T) {
 	moveBody := bytes.NewBufferString(`{"move":"e2e4"}`)
 	w2 := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/games/"+gameID+"/move", moveBody)
-	handleMove(w2, req, session, store, gameID)
+	handleMove(w2, req, session, store, gameID, nil)
 	if w2.Code != http.StatusOK {
 		t.Fatalf("unexpected move status: %d", w2.Code)
 	}

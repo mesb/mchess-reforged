@@ -19,6 +19,7 @@ import (
 	"github.com/mesb/mchess/board"
 	"github.com/mesb/mchess/pgn"
 	"github.com/mesb/mchess/pieces"
+	ws "github.com/mesb/mchess/server"
 	"github.com/mesb/mchess/shell"
 	"github.com/mesb/mchess/socrates"
 )
@@ -177,6 +178,22 @@ func main() {
 		store = NewMemoryStore()
 	}
 
+	hub := ws.NewHub()
+	go hub.Run()
+
+	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		gameID := r.URL.Query().Get("game_id")
+		if gameID == "" {
+			http.Error(w, "missing game_id", http.StatusBadRequest)
+			return
+		}
+		if _, err := store.Get(gameID); err != nil {
+			http.Error(w, "Game not found", http.StatusNotFound)
+			return
+		}
+		ws.ServeWS(hub, gameID, w, r)
+	})
+
 	http.HandleFunc("/games", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed) // FIXED
@@ -210,7 +227,7 @@ func main() {
 		if r.Method == http.MethodGet && len(parts) == 2 {
 			handleGetState(w, session, gameID)
 		} else if r.Method == http.MethodPost && len(parts) == 3 && parts[2] == "move" {
-			handleMove(w, r, session, store, gameID)
+			handleMove(w, r, session, store, gameID, hub)
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed) // FIXED
 		}
@@ -227,7 +244,7 @@ func handleGetState(w http.ResponseWriter, s *shell.GameSession, id string) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-func handleMove(w http.ResponseWriter, r *http.Request, s *shell.GameSession, store GameStore, id string) {
+func handleMove(w http.ResponseWriter, r *http.Request, s *shell.GameSession, store GameStore, id string, hub *ws.Hub) {
 	var req MoveRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest) // FIXED
@@ -254,6 +271,11 @@ func handleMove(w http.ResponseWriter, r *http.Request, s *shell.GameSession, st
 	}
 
 	resp := snapshotStateResponse(s, id)
+	if hub != nil {
+		if payload, err := json.Marshal(resp); err == nil {
+			hub.BroadcastTo(id, payload)
+		}
+	}
 	json.NewEncoder(w).Encode(resp)
 }
 
