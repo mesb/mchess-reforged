@@ -1,8 +1,24 @@
 services:
+  db:
+    image: postgres:13-alpine
+    environment:
+      POSTGRES_USER: mchess
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mchess
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
   mchess-api:
     build: .
     ports:
       - "8080:8080"
     environment:
-      - PORT=8080
+      - DATABASE_URL=postgres://mchess:password@db:5432/mchess?sslmode=disable
+    depends_on:
+      - db
     restart: always
+
+volumes:
+  pgdata:

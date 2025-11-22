@@ -1,7 +1,5 @@
 // --- pgn/pgn.go ---
 
-// Package pgn provides a simple encoder/decoder for storing and loading games
-// in Portable Game Notation (PGN), a standard format used by chess engines.
 package pgn
 
 import (
@@ -13,18 +11,11 @@ import (
 	"github.com/mesb/mchess/socrates"
 )
 
-// Save writes the game log as a PGN file.
-func Save(log *socrates.Log, filename string) error {
-	file, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
+// Export converts the game log into a PGN string.
+func Export(log *socrates.Log) string {
 	var builder strings.Builder
-	// Add standard headers
 	builder.WriteString("[Event \"MCHESS Game\"]\n")
-	builder.WriteString("[Site \"Local CLI\"]\n")
+	builder.WriteString("[Site \"MCHESS Server\"]\n")
 	builder.WriteString("\n")
 
 	for i, m := range log.Moves() {
@@ -33,45 +24,68 @@ func Save(log *socrates.Log, filename string) error {
 		}
 		builder.WriteString(fmt.Sprintf("%s%s ", formatSquare(m.From), formatSquare(m.To)))
 	}
-	// Add result terminator
 	builder.WriteString("*")
-
-	_, err = file.WriteString(builder.String())
-	return err
+	return builder.String()
 }
 
-// Load parses a PGN file and replays it on the given rule engine.
-func Load(engine *socrates.RuleEngine, filename string) error {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return err
-	}
-	words := strings.Fields(string(data))
+// Import parses a PGN string and replays it on the engine.
+func Import(engine *socrates.RuleEngine, data string) error {
+	words := strings.Fields(data)
 	for _, word := range words {
-		if strings.Contains(word, ".") {
+		if strings.Contains(word, ".") || strings.Contains(word, "[") || strings.Contains(word, "]") {
 			continue
 		}
-		if len(word) != 4 {
+		if len(word) < 4 {
 			continue
 		}
-		from := parseSquare(word[:2])
-		to := parseSquare(word[2:])
-		// Inside pgn.Load loop:
-		if !engine.MakeMove(from, to, 0) { // Pass 0 for no specific promotion preference
+
+		// Handle standard moves (e2e4) and promotions (a7a8q)
+		// Simplified parsing for PGN replay
+		clean := strings.TrimSuffix(word, "+") // Remove check indicator if present
+		clean = strings.TrimSuffix(clean, "#") // Remove mate indicator
+
+		from := parseSquare(clean[:2])
+		to := parseSquare(clean[2:4])
+
+		var promo rune
+		if len(clean) == 5 {
+			promo = rune(clean[4])
+		}
+
+		if !engine.MakeMove(*from, *to, promo) {
 			return fmt.Errorf("illegal move in PGN: %s", word)
 		}
 	}
 	return nil
 }
 
-// formatSquare turns an Addr into PGN string like "e2"
+// --- File Wrappers (Backward Compatibility) ---
+
+func Save(log *socrates.Log, filename string) error {
+	data := Export(log)
+	return os.WriteFile(filename, []byte(data), 0644)
+}
+
+func Load(engine *socrates.RuleEngine, filename string) error {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	return Import(engine, string(data))
+}
+
+// --- Helpers ---
+
 func formatSquare(a address.Addr) string {
 	return fmt.Sprintf("%c%d", a.File.Char(), int(a.Rank)+1)
 }
 
-// parseSquare reads a square like "e2" into an Addr
-func parseSquare(s string) address.Addr {
+func parseSquare(s string) *address.Addr {
+	if len(s) < 2 {
+		return nil
+	}
 	f := int(s[0] - 'a')
 	r := int(s[1] - '1')
-	return address.MakeAddr(address.Rank(r), address.File(f))
+	a := address.MakeAddr(address.Rank(r), address.File(f))
+	return &a
 }
