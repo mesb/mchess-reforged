@@ -2,7 +2,7 @@
 
 // Package pgn provides a simple encoder/decoder for storing and loading games
 // in Portable Game Notation (PGN), a standard format used by chess engines.
-package pgn
+package png
 
 import (
 	"fmt"
@@ -22,12 +22,20 @@ func Save(log *socrates.Log, filename string) error {
 	defer file.Close()
 
 	var builder strings.Builder
+	// Add standard headers
+	builder.WriteString("[Event \"MCHESS Game\"]\n")
+	builder.WriteString("[Site \"Local CLI\"]\n")
+	builder.WriteString("\n")
+
 	for i, m := range log.Moves() {
 		if i%2 == 0 {
 			builder.WriteString(fmt.Sprintf("%d. ", i/2+1))
 		}
 		builder.WriteString(fmt.Sprintf("%s%s ", formatSquare(m.From), formatSquare(m.To)))
 	}
+	// Add result terminator
+	builder.WriteString("*")
+
 	_, err = file.WriteString(builder.String())
 	return err
 }

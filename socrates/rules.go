@@ -32,37 +32,40 @@ func (r *RuleEngine) MakeMove(from, to address.Addr) bool {
 	moving := r.Board.PieceAt(from)
 	target := r.Board.PieceAt(to)
 
+	// Flag for 50-move rule
+	_, isPawn := moving.(*pieces.Pawn)
+	isCapture := target != nil
+
 	// --- Logic: En Passant Capture ---
-	if p, ok := moving.(*pieces.Pawn); ok {
+	if isPawn {
 		if ep := r.State.GetEnPassant(); ep != nil && to.Equals(*ep) {
 			captureRankDir := -1
-			if p.Color() == pieces.BLACK {
+			if moving.Color() == pieces.BLACK {
 				captureRankDir = 1
 			}
 			if victimPos, ok := to.Shift(captureRankDir, 0); ok {
-				target = r.Board.PieceAt(victimPos)
+				target = r.Board.PieceAt(victimPos) // Capture the pawn behind
 				r.Board.Clear(victimPos)
+				isCapture = true
 			}
 		}
 	}
 
 	// --- Logic: Castling Execution ---
-	// If King moves > 1 square, move the Rook too.
 	if _, isKing := moving.(*pieces.King); isKing {
 		df := int(to.File) - int(from.File)
 		if df == 2 || df == -2 {
 			rank := from.Rank
 			var rookFrom, rookTo address.Addr
 
-			if df == 2 { // Kingside (e -> g)
-				rookFrom = address.MakeAddr(rank, 7) // h-file
-				rookTo = address.MakeAddr(rank, 5)   // f-file
-			} else { // Queenside (e -> c)
-				rookFrom = address.MakeAddr(rank, 0) // a-file
-				rookTo = address.MakeAddr(rank, 3)   // d-file
+			if df == 2 { // Kingside
+				rookFrom = address.MakeAddr(rank, 7)
+				rookTo = address.MakeAddr(rank, 5)
+			} else { // Queenside
+				rookFrom = address.MakeAddr(rank, 0)
+				rookTo = address.MakeAddr(rank, 3)
 			}
 
-			// Move Rook
 			rook := r.Board.PieceAt(rookFrom)
 			r.Board.SetPiece(rookTo, rook)
 			r.Board.Clear(rookFrom)
@@ -80,18 +83,27 @@ func (r *RuleEngine) MakeMove(from, to address.Addr) bool {
 
 	// --- State Updates ---
 	r.updateEnPassantState(moving, from, to)
-	r.updateCastlingRights(moving, from) // Handle rights revocation
+	r.updateCastlingRights(moving, from)
 
-	// Auto-Queen
-	if p, ok := moving.(*pieces.Pawn); ok {
+	// Update 50-move clock
+	r.State.IncrementClock(isPawn, isCapture)
+
+	// Auto-Queen (Simplified for CLI)
+	if isPawn {
 		rank := to.Rank
-		if (p.Color() == pieces.WHITE && rank == 7) || (p.Color() == pieces.BLACK && rank == 0) {
-			r.Board.SetPiece(to, pieces.NewQueen(p.Color()))
+		if (moving.Color() == pieces.WHITE && rank == 7) || (moving.Color() == pieces.BLACK && rank == 0) {
+			r.Board.SetPiece(to, pieces.NewQueen(moving.Color()))
 		}
 	}
 
 	r.Turn = 1 - r.Turn
 	r.State.Turn = r.Turn
+
+	// Increment full move number if it was Black's turn
+	if moving.Color() == pieces.BLACK {
+		r.State.FullmoveNumber++
+	}
+
 	return true
 }
 
@@ -108,26 +120,22 @@ func (r *RuleEngine) updateEnPassantState(p pieces.Piece, from, to address.Addr)
 }
 
 func (r *RuleEngine) updateCastlingRights(p pieces.Piece, from address.Addr) {
-	// 1. If King moves, lose all rights for that color
 	if _, ok := p.(*pieces.King); ok {
 		r.State.RevokeCastling(p.Color())
 		return
 	}
 
-	// 2. If Rook moves from start, lose that specific side's right
 	if _, ok := p.(*pieces.Rook); ok {
-		// White Rooks
-		if from.Equals(address.MakeAddr(0, 7)) { // h1
+		if from.Equals(address.MakeAddr(0, 7)) {
 			r.State.RevokeSide("K")
 		}
-		if from.Equals(address.MakeAddr(0, 0)) { // a1
+		if from.Equals(address.MakeAddr(0, 0)) {
 			r.State.RevokeSide("Q")
 		}
-		// Black Rooks
-		if from.Equals(address.MakeAddr(7, 7)) { // h8
+		if from.Equals(address.MakeAddr(7, 7)) {
 			r.State.RevokeSide("k")
 		}
-		if from.Equals(address.MakeAddr(7, 0)) { // a8
+		if from.Equals(address.MakeAddr(7, 0)) {
 			r.State.RevokeSide("q")
 		}
 	}
