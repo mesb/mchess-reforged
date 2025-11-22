@@ -36,6 +36,7 @@ func (r *RuleEngine) Search(depth int) SearchResult {
 		r.MakeMove(m.From, m.To, m.Promo)
 
 		score, visited := r.negamax(depth-1, -beta, -alpha)
+		score = -score
 		totalNodes += visited + 1
 
 		r.UndoMove()
@@ -112,6 +113,9 @@ type SimpleMove struct {
 func (r *RuleEngine) GenerateLegalMoves() []SimpleMove {
 	moves := make([]SimpleMove, 0, 40)
 
+	var captures []SimpleMove
+	var quiets []SimpleMove
+
 	r.Board.ForEachPiece(func(from address.Addr, p pieces.Piece) {
 		if p.Color() != r.Turn {
 			return
@@ -120,13 +124,25 @@ func (r *RuleEngine) GenerateLegalMoves() []SimpleMove {
 		for _, to := range candidates {
 			if r.IsLegalMove(from, to) {
 				if isPromo(p, to) {
-					moves = append(moves, SimpleMove{from, to, 'q'})
+					move := SimpleMove{from, to, 'q'}
+					if r.Board.IsEmpty(to) {
+						quiets = append(quiets, move)
+					} else {
+						captures = append(captures, move)
+					}
 				} else {
-					moves = append(moves, SimpleMove{from, to, 0})
+					move := SimpleMove{from, to, 0}
+					if r.Board.IsEmpty(to) {
+						quiets = append(quiets, move)
+					} else {
+						captures = append(captures, move)
+					}
 				}
 			}
 		}
 	})
+	moves = append(moves, captures...)
+	moves = append(moves, quiets...)
 	return moves
 }
 
