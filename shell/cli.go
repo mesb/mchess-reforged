@@ -78,6 +78,14 @@ func handleInput(input string, session *GameSession) bool {
 		return false
 	}
 
+	if input == "analyze" {
+		session.Renderer.Message("Thinking...")
+		result := session.Engine.Search(4) // depth 4 for quick response
+		msg := fmt.Sprintf("Best Move: %s -> %s (Score: %d, Nodes: %d)", result.From, result.To, result.Score, result.Nodes)
+		session.Renderer.Message(msg)
+		return false
+	}
+
 	if input == "u" {
 		if !session.Engine.UndoMove() {
 			session.Renderer.Message("Nothing to undo.")
