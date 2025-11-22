@@ -7,6 +7,7 @@ type ttEntry struct {
 	score int
 	flag  int
 	move  SimpleMove
+	gen   int
 }
 
 const (

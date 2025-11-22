@@ -19,7 +19,8 @@ type RuleEngine struct {
 	hash        uint64
 	hashHistory []uint64
 
-	tt map[uint64]ttEntry
+	tt  map[uint64]ttEntry
+	gen int
 
 	history [2][64][64]int // color, from, to
 	killers [128][2]SimpleMove
@@ -335,36 +336,6 @@ func (r *RuleEngine) IsInCheck(color int) bool {
 	return false
 }
 
-func scanDirs(b *board.Board, start address.Addr, dirs [][2]int, enemyColor int, checkRook, checkBishop bool) bool {
-	for _, d := range dirs {
-		for i := 1; i < 8; i++ {
-			pos, ok := start.Shift(d[0]*i, d[1]*i)
-			if !ok {
-				break
-			}
-			p := b.PieceAt(pos)
-			if p != nil {
-				if p.Color() == enemyColor {
-					switch p.(type) {
-					case *pieces.Queen:
-						return true
-					case *pieces.Rook:
-						if checkRook {
-							return true
-						}
-					case *pieces.Bishop:
-						if checkBishop {
-							return true
-						}
-					}
-				}
-				break
-			}
-		}
-	}
-	return false
-}
-
 func (r *RuleEngine) WouldBeInCheck(from, to address.Addr) bool {
 	moving := r.Board.PieceAt(from)
 	captured := r.Board.PieceAt(to)
@@ -402,6 +373,7 @@ func (r *RuleEngine) resetHashHistory() {
 	if r.tt == nil {
 		r.tt = make(map[uint64]ttEntry)
 	}
+	r.gen = 0
 	for c := 0; c < 2; c++ {
 		for i := 0; i < 64; i++ {
 			for j := 0; j < 64; j++ {

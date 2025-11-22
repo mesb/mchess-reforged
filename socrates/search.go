@@ -28,6 +28,7 @@ type SearchResult struct {
 
 // Search runs the Alpha-Beta Negamax algorithm to a fixed depth.
 func (r *RuleEngine) Search(depth int) SearchResult {
+	r.gen++
 	// Opening book try
 	if bm := r.BookMove(); bm != nil {
 		return SearchResult{From: bm.From, To: bm.To, Score: 0, Nodes: 0}
@@ -205,6 +206,10 @@ func (r *RuleEngine) quiesce(ply, alpha, beta int) (int, int) {
 	}
 
 	for _, m := range moves {
+		// Simple SEE-like filter: skip obviously bad captures
+		if !inCheck && !r.isGoodCapture(m) {
+			continue
+		}
 		r.MakeMove(m.From, m.To, m.Promo)
 		childScore, childNodes := r.quiesce(ply+1, -beta, -alpha)
 		nodes += childNodes
@@ -316,12 +321,18 @@ func (r *RuleEngine) isCapture(m SimpleMove) bool {
 }
 
 func (r *RuleEngine) storeTT(hash uint64, depth int, score int, flag int, move SimpleMove) {
+	if old, ok := r.tt[hash]; ok {
+		if old.gen == r.gen && old.depth > depth {
+			return
+		}
+	}
 	r.tt[hash] = ttEntry{
 		hash:  hash,
 		depth: depth,
 		score: score,
 		flag:  flag,
 		move:  move,
+		gen:   r.gen,
 	}
 }
 
@@ -420,4 +431,14 @@ func (r *RuleEngine) storeKiller(ply int, m SimpleMove) {
 
 func (r *RuleEngine) bumpHistory(m SimpleMove) {
 	r.history[r.Turn][m.From.Index()][m.To.Index()] += 1
+}
+
+// isGoodCapture uses a simple SEE-like heuristic to filter bad captures.
+func (r *RuleEngine) isGoodCapture(m SimpleMove) bool {
+	attacker := r.Board.PieceAt(m.From)
+	target := r.Board.PieceAt(m.To)
+	if target == nil {
+		return true
+	}
+	return pieceValue(target) >= pieceValue(attacker)
 }

@@ -9,7 +9,8 @@ import (
 
 // Minimal opening book keyed by FEN (piece placement + turn only for simplicity).
 var miniBook = map[string][]string{
-	"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w": {"e2e4", "d2d4", "c2c4", "g1f3"},
+	"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w":     {"e2e4", "d2d4", "c2c4", "g1f3"},
+	"rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w": {"g1f3", "d2d4"},
 }
 
 // BookMove returns a legal book move if available.
