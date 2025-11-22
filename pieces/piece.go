@@ -13,6 +13,7 @@ const (
 // This prevents circular dependencies between 'pieces' and 'board'.
 type GameStateView interface {
 	GetEnPassant() *address.Addr
+	GetCastlingRights() string
 }
 
 // Piece defines the behavior of any chess piece type.

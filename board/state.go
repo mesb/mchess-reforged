@@ -35,6 +35,7 @@ func (s *GameState) SwitchTurn() {
 
 func (s *GameState) GetEnPassant() *address.Addr  { return s.EnPassant }
 func (s *GameState) SetEnPassant(t *address.Addr) { s.EnPassant = t }
+func (s *GameState) GetCastlingRights() string    { return s.CastlingRights }
 
 // RevokeCastling removes rights for a specific color (0=White "KQ", 1=Black "kq").
 func (s *GameState) RevokeCastling(color int) {

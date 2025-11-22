@@ -93,32 +93,57 @@ func NewPostgresStore(dsn string) (*PostgresStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Ensure table exists
-	query := `CREATE TABLE IF NOT EXISTS games (id TEXT PRIMARY KEY, pgn TEXT);`
-	if _, err := db.Exec(query); err != nil {
+	if err := ensureSchema(db); err != nil {
 		return nil, err
 	}
 	return &PostgresStore{db: db}, nil
 }
 
+// ensureSchema creates the games table if needed and adds new columns when upgrading.
+func ensureSchema(db *sql.DB) error {
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS games (id TEXT PRIMARY KEY, fen TEXT, pgn TEXT);`); err != nil {
+		return err
+	}
+	// Migrations for older deployments missing fen or pgn columns.
+	if _, err := db.Exec(`ALTER TABLE games ADD COLUMN IF NOT EXISTS fen TEXT;`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`ALTER TABLE games ADD COLUMN IF NOT EXISTS pgn TEXT;`); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *PostgresStore) Create() (string, error) {
 	id := fmt.Sprintf("game_%d", time.Now().UnixNano())
-	// Create empty game
-	_, err := s.db.Exec("INSERT INTO games (id, pgn) VALUES ($1, '')", id)
+	session := shell.NewSession(nil)
+	initialFEN := session.Engine.Board.ToFEN(session.Engine.State)
+	_, err := s.db.Exec("INSERT INTO games (id, fen, pgn) VALUES ($1, $2, '')", id, initialFEN)
 	return id, err
 }
 
 func (s *PostgresStore) Get(id string) (*shell.GameSession, error) {
-	var pgnData string
-	err := s.db.QueryRow("SELECT pgn FROM games WHERE id = $1", id).Scan(&pgnData)
+	var fenData, pgnData sql.NullString
+	err := s.db.QueryRow("SELECT fen, pgn FROM games WHERE id = $1", id).Scan(&fenData, &pgnData)
 	if err != nil {
 		return nil, err
 	}
 
-	// Rehydrate: Create fresh session -> Replay PGN
+	if fenData.Valid {
+		board, state, err := board.FromFEN(fenData.String)
+		if err == nil {
+			session := shell.NewSession(nil)
+			session.Engine.Board = board
+			session.Engine.State = state
+			session.Engine.Turn = state.Turn
+			return session, nil
+		}
+		// fall back to PGN replay if FEN invalid
+	}
+
 	session := shell.NewSession(nil)
-	if pgnData != "" {
-		if err := pgn.Import(session.Engine, pgnData); err != nil {
+	if pgnData.Valid && pgnData.String != "" {
+		if err := pgn.Import(session.Engine, pgnData.String); err != nil {
 			return nil, err
 		}
 	}
@@ -128,7 +153,8 @@ func (s *PostgresStore) Get(id string) (*shell.GameSession, error) {
 func (s *PostgresStore) Save(id string, session *shell.GameSession) error {
 	// Serialize state to PGN
 	data := pgn.Export(session.Log)
-	_, err := s.db.Exec("UPDATE games SET pgn = $1 WHERE id = $2", data, id)
+	fen := session.Engine.Board.ToFEN(session.Engine.State)
+	_, err := s.db.Exec("UPDATE games SET fen = $1, pgn = $2 WHERE id = $3", fen, data, id)
 	return err
 }
 
@@ -195,6 +221,43 @@ func main() {
 }
 
 func handleGetState(w http.ResponseWriter, s *shell.GameSession, id string) {
+	s.Mu.RLock()
+	resp := snapshotStateResponse(s, id)
+	s.Mu.RUnlock()
+	json.NewEncoder(w).Encode(resp)
+}
+
+func handleMove(w http.ResponseWriter, r *http.Request, s *shell.GameSession, store GameStore, id string) {
+	var req MoveRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest) // FIXED
+		return
+	}
+
+	from, to, promo, err := socrates.ParseMove(req.Move)
+	if err != nil {
+		http.Error(w, "Invalid notation: "+err.Error(), http.StatusBadRequest) // FIXED
+		return
+	}
+
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	if !s.Engine.MakeMove(*from, *to, promo) {
+		http.Error(w, "Illegal move", http.StatusConflict) // FIXED
+		return
+	}
+
+	// Persist state after move!
+	if err := store.Save(id, s); err != nil {
+		log.Printf("Failed to save game: %v", err)
+	}
+
+	resp := snapshotStateResponse(s, id)
+	json.NewEncoder(w).Encode(resp)
+}
+
+func snapshotStateResponse(s *shell.GameSession, id string) GameStateResponse {
 	status := "Active"
 	isOver := false
 	if s.Engine.IsCheckmate() {
@@ -213,40 +276,14 @@ func handleGetState(w http.ResponseWriter, s *shell.GameSession, id string) {
 
 	fen := s.Engine.Board.ToFEN(s.Engine.State)
 
-	json.NewEncoder(w).Encode(GameStateResponse{
+	return GameStateResponse{
 		ID:       id,
 		Turn:     turn,
 		IsOver:   isOver,
 		Status:   status,
 		BoardFEN: fen,
 		Board:    materializeBoard(s.Engine.Board),
-	})
-}
-
-func handleMove(w http.ResponseWriter, r *http.Request, s *shell.GameSession, store GameStore, id string) {
-	var req MoveRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest) // FIXED
-		return
 	}
-
-	from, to, promo, err := socrates.ParseMove(req.Move)
-	if err != nil {
-		http.Error(w, "Invalid notation: "+err.Error(), http.StatusBadRequest) // FIXED
-		return
-	}
-
-	if !s.Engine.MakeMove(*from, *to, promo) {
-		http.Error(w, "Illegal move", http.StatusConflict) // FIXED
-		return
-	}
-
-	// Persist state after move!
-	if err := store.Save(id, s); err != nil {
-		log.Printf("Failed to save game: %v", err)
-	}
-
-	handleGetState(w, s, id)
 }
 
 func materializeBoard(b *board.Board) [][]string {

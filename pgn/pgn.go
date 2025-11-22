@@ -11,8 +11,30 @@ import (
 	"github.com/mesb/mchess/socrates"
 )
 
+func isCoordToken(s string) bool {
+	if len(s) != 4 && len(s) != 5 {
+		return false
+	}
+	if s[0] < 'a' || s[0] > 'h' || s[2] < 'a' || s[2] > 'h' {
+		return false
+	}
+	if s[1] < '1' || s[1] > '8' || s[3] < '1' || s[3] > '8' {
+		return false
+	}
+	if len(s) == 5 {
+		c := s[4]
+		if c != 'q' && c != 'r' && c != 'b' && c != 'n' {
+			return false
+		}
+	}
+	return true
+}
+
 // Export converts the game log into a PGN string.
 func Export(log *socrates.Log) string {
+	if log == nil {
+		return ""
+	}
 	var builder strings.Builder
 	builder.WriteString("[Event \"MCHESS Game\"]\n")
 	builder.WriteString("[Site \"MCHESS Server\"]\n")
@@ -35,7 +57,7 @@ func Import(engine *socrates.RuleEngine, data string) error {
 		if strings.Contains(word, ".") || strings.Contains(word, "[") || strings.Contains(word, "]") {
 			continue
 		}
-		if len(word) < 4 {
+		if !isCoordToken(word) && !isCoordToken(strings.TrimSuffix(strings.TrimSuffix(word, "+"), "#")) {
 			continue
 		}
 
@@ -43,9 +65,15 @@ func Import(engine *socrates.RuleEngine, data string) error {
 		// Simplified parsing for PGN replay
 		clean := strings.TrimSuffix(word, "+") // Remove check indicator if present
 		clean = strings.TrimSuffix(clean, "#") // Remove mate indicator
+		if !isCoordToken(clean) {
+			continue
+		}
 
 		from := parseSquare(clean[:2])
 		to := parseSquare(clean[2:4])
+		if from == nil || to == nil {
+			continue
+		}
 
 		var promo rune
 		if len(clean) == 5 {
@@ -82,6 +110,9 @@ func formatSquare(a address.Addr) string {
 
 func parseSquare(s string) *address.Addr {
 	if len(s) < 2 {
+		return nil
+	}
+	if s[0] < 'a' || s[0] > 'h' || s[1] < '1' || s[1] > '8' {
 		return nil
 	}
 	f := int(s[0] - 'a')

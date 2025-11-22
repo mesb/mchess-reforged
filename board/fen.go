@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mesb/mchess/address"
 	"github.com/mesb/mchess/pieces"
 )
 
@@ -83,6 +84,104 @@ func (b *Board) ToFEN(state *GameState) string {
 	fmt.Fprintf(&fen, " %d %d", state.HalfmoveClock, state.FullmoveNumber)
 
 	return fen.String()
+}
+
+// FromFEN hydrates a board and game state from a FEN string.
+func FromFEN(fen string) (*Board, *GameState, error) {
+	parts := strings.Fields(fen)
+	if len(parts) != 6 {
+		return nil, nil, fmt.Errorf("invalid FEN: expected 6 fields, got %d", len(parts))
+	}
+
+	board := NewBoard()
+	ranks := strings.Split(parts[0], "/")
+	if len(ranks) != 8 {
+		return nil, nil, fmt.Errorf("invalid piece placement")
+	}
+
+	for fenRank, row := range ranks {
+		boardRank := 7 - fenRank // FEN lists 8->1
+		file := 0
+		for _, c := range row {
+			if c >= '1' && c <= '8' {
+				file += int(c - '0')
+				continue
+			}
+			p, err := pieceFromFENChar(c)
+			if err != nil {
+				return nil, nil, err
+			}
+			if file >= 8 {
+				return nil, nil, fmt.Errorf("file overflow in rank %d", boardRank)
+			}
+			addr := address.MakeAddr(address.Rank(boardRank), address.File(file))
+			board.SetPiece(addr, p)
+			file++
+		}
+		if file != 8 {
+			return nil, nil, fmt.Errorf("rank %d does not have 8 files", boardRank)
+		}
+	}
+
+	state := &GameState{}
+
+	// Active color
+	switch parts[1] {
+	case "w":
+		state.Turn = pieces.WHITE
+	case "b":
+		state.Turn = pieces.BLACK
+	default:
+		return nil, nil, fmt.Errorf("invalid active color")
+	}
+
+	state.CastlingRights = parts[2]
+	if state.CastlingRights == "" {
+		state.CastlingRights = "-"
+	}
+
+	// En passant
+	if parts[3] != "-" {
+		if len(parts[3]) != 2 {
+			return nil, nil, fmt.Errorf("invalid en passant square")
+		}
+		ep := address.MakeAddr(address.Rank(parts[3][1]-'1'), address.File(parts[3][0]-'a'))
+		state.EnPassant = &ep
+	}
+
+	// Halfmove and fullmove
+	if _, err := fmt.Sscanf(parts[4], "%d", &state.HalfmoveClock); err != nil {
+		return nil, nil, fmt.Errorf("invalid halfmove clock")
+	}
+	if _, err := fmt.Sscanf(parts[5], "%d", &state.FullmoveNumber); err != nil {
+		return nil, nil, fmt.Errorf("invalid fullmove number")
+	}
+
+	return board, state, nil
+}
+
+func pieceFromFENChar(c rune) (pieces.Piece, error) {
+	color := pieces.WHITE
+	if c >= 'a' && c <= 'z' {
+		color = pieces.BLACK
+		c -= 32
+	}
+	switch c {
+	case 'P':
+		return pieces.NewPawn(color), nil
+	case 'R':
+		return pieces.NewRook(color), nil
+	case 'N':
+		return pieces.NewKnight(color), nil
+	case 'B':
+		return pieces.NewBishop(color), nil
+	case 'Q':
+		return pieces.NewQueen(color), nil
+	case 'K':
+		return pieces.NewKing(color), nil
+	default:
+		return nil, fmt.Errorf("invalid piece char %c", c)
+	}
 }
 
 // pieceToFenChar converts a piece to its FEN character (e.g., 'P', 'n', 'q').

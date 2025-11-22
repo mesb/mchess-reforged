@@ -3,6 +3,7 @@
 package socrates
 
 import (
+	"github.com/mesb/mchess/address"
 	"github.com/mesb/mchess/pieces"
 )
 
@@ -49,16 +50,18 @@ func (r *RuleEngine) IsInsufficientMaterial() bool {
 }
 
 func (r *RuleEngine) hasAnyLegalMove() bool {
-	for from, p := range r.Board.All() {
-		if p.Color() != r.Turn {
-			continue
+	found := false
+	r.Board.ForEachPiece(func(from address.Addr, p pieces.Piece) {
+		if found || p.Color() != r.Turn {
+			return
 		}
 		moves := p.ValidMoves(from, r.Board, r.State)
 		for _, to := range moves {
-			if !r.WouldBeInCheck(from, to) {
-				return true
+			if r.IsLegalMove(from, to) {
+				found = true
+				return
 			}
 		}
-	}
-	return false
+	})
+	return found
 }

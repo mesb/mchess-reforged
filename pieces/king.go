@@ -36,5 +36,51 @@ func (k *King) ValidMoves(from address.Addr, board BoardView, state GameStateVie
 			}
 		}
 	}
+
+	// Castling: add two-square jumps if castling rights and empty path.
+	if state != nil {
+		rights := state.GetCastlingRights()
+		rank := 0
+		if k.color == BLACK {
+			rank = 7
+		}
+
+		// Kingside
+		if hasRight(rights, k.color, true) &&
+			board.IsEmpty(address.MakeAddr(address.Rank(rank), address.File(5))) &&
+			board.IsEmpty(address.MakeAddr(address.Rank(rank), address.File(6))) {
+			moves = append(moves, address.MakeAddr(address.Rank(rank), address.File(6)))
+		}
+		// Queenside
+		if hasRight(rights, k.color, false) &&
+			board.IsEmpty(address.MakeAddr(address.Rank(rank), address.File(1))) &&
+			board.IsEmpty(address.MakeAddr(address.Rank(rank), address.File(2))) &&
+			board.IsEmpty(address.MakeAddr(address.Rank(rank), address.File(3))) {
+			moves = append(moves, address.MakeAddr(address.Rank(rank), address.File(2)))
+		}
+	}
+
 	return moves
+}
+
+func hasRight(rights string, color int, kingSide bool) bool {
+	if color == WHITE {
+		if kingSide {
+			return contains(rights, "K")
+		}
+		return contains(rights, "Q")
+	}
+	if kingSide {
+		return contains(rights, "k")
+	}
+	return contains(rights, "q")
+}
+
+func contains(s, sub string) bool {
+	for _, r := range s {
+		if string(r) == sub {
+			return true
+		}
+	}
+	return false
 }

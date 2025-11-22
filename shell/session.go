@@ -6,10 +6,12 @@ import (
 	"github.com/mesb/mchess/board"
 	"github.com/mesb/mchess/pieces"
 	"github.com/mesb/mchess/socrates"
+	"sync"
 )
 
 // GameSession represents an active chess session with state and utilities.
 type GameSession struct {
+	Mu       sync.RWMutex
 	Engine   *socrates.RuleEngine
 	Captured map[int][]pieces.Piece
 	Log      *socrates.Log

@@ -367,13 +367,5 @@ func (r *RuleEngine) WouldBeInCheck(from, to address.Addr) bool {
 }
 
 func findKing(b *board.Board, color int) *address.Addr {
-	for pos, p := range b.All() {
-		if p.Color() == color {
-			if _, ok := p.(*pieces.King); ok {
-				ref := pos
-				return &ref
-			}
-		}
-	}
-	return nil
+	return b.FindKing(color)
 }

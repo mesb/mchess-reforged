@@ -108,6 +108,16 @@ func (b *Board) All() map[address.Addr]pieces.Piece {
 	return result
 }
 
+// ForEachPiece walks the board without allocations.
+func (b *Board) ForEachPiece(fn func(address.Addr, pieces.Piece)) {
+	for i, p := range b.squares {
+		if p == nil {
+			continue
+		}
+		fn(address.TranslateIndex(i), p)
+	}
+}
+
 // Print renders the board row by row for debugging.
 func Print(b *Board) {
 	for i := 1; i <= address.NumSquares; i++ {
@@ -122,4 +132,18 @@ func Print(b *Board) {
 			fmt.Println()
 		}
 	}
+}
+
+// FindKing returns the position of the king of the given color, if present.
+func (b *Board) FindKing(color int) *address.Addr {
+	for i, p := range b.squares {
+		if p == nil || p.Color() != color {
+			continue
+		}
+		if _, ok := p.(*pieces.King); ok {
+			addr := address.TranslateIndex(i)
+			return &addr
+		}
+	}
+	return nil
 }
