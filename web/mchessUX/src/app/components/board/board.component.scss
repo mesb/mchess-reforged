@@ -1,0 +1,42 @@
+.board-svg {
+  width: 100%;
+  height: auto;
+  touch-action: none;
+}
+
+.light {
+  fill: #e6e6e6;
+}
+
+.dark {
+  fill: #b0b0b0;
+}
+
+.selected {
+  stroke: #4ade80;
+  stroke-width: 0.1;
+}
+
+.piece-text {
+  font-size: 0.75px;
+  dominant-baseline: middle;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.piece-white {
+  fill: #111;
+}
+
+.piece-black {
+  fill: #222;
+}
+
+.ghost-piece {
+  opacity: 0.5;
+}
+
+.board-card {
+  background: linear-gradient(135deg, #11141c 0%, #0c0f16 100%);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}

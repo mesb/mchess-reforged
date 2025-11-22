@@ -1,0 +1,44 @@
+<div class="board-container">
+  <svg
+    viewBox="0 0 8 8"
+    class="board-svg"
+    (mousedown)="startDrag($event)"
+    (touchstart)="startDrag($event)"
+    (click)="tap($event)"
+    (mousemove)="drag($event)"
+    (touchmove)="drag($event)"
+    (mouseup)="endDrag($event)"
+    (touchend)="endDrag($event)"
+  >
+    @for (sq of squares; track sq.id) {
+      <rect
+        [attr.x]="sq.x"
+        [attr.y]="sq.y"
+        width="1"
+        height="1"
+        [attr.class]="sq.colorClass"
+        [class.selected]="selected() === sq.id"
+      />
+    }
+
+    @for (char of board(); track $index) {
+      @if (char !== '') {
+        <text
+          [attr.x]="($index % 8) + 0.5"
+        [attr.y]="rankFromIndex($index) + 0.5"
+          class="piece-text"
+          [class.piece-white]="isWhite(char)"
+          [class.piece-black]="!isWhite(char)"
+        >
+          {{ getUnicode(char) }}
+        </text>
+      }
+    }
+
+    @if (dragging()) {
+      <text [attr.transform]="dragTransform()" class="piece-text ghost-piece">
+        {{ draggingPieceChar() }}
+      </text>
+    }
+  </svg>
+</div>

@@ -1,0 +1,69 @@
+<div class="shell">
+  <mat-toolbar color="transparent" class="top-bar glass">
+    <div class="brand-row">
+      <div class="brand">MCHESS</div>
+      <div class="muted small">Universal Core</div>
+    </div>
+    <span class="spacer"></span>
+    <mat-chip-set class="chips">
+      <mat-chip [color]="connection() === 'connected' ? 'accent' : 'warn'" selected>
+        {{ connection() }}
+      </mat-chip>
+      <mat-chip>{{ turnLabel() }}</mat-chip>
+      <mat-chip>{{ state() }}</mat-chip>
+    </mat-chip-set>
+  </mat-toolbar>
+
+  <main class="content">
+    <div class="hero">
+      <mat-card class="board-card glass">
+        <mat-card-header>
+          <mat-card-title>Board</mat-card-title>
+          <mat-card-subtitle>
+            Game: {{ gameId() || '...' }} • Turn: {{ turnLabel() }} • State: {{ state() }}
+          </mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-content>
+          <div class="board-container">
+            <app-board />
+          </div>
+        </mat-card-content>
+      </mat-card>
+
+      <mat-card class="panel glass">
+        <mat-card-header>
+          <mat-card-title>Session</mat-card-title>
+          <mat-card-subtitle>Manage and join games</mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-content class="panel-body">
+          <div class="info-line">
+            <span class="muted">Connection</span>
+            <span>{{ connection() }}</span>
+          </div>
+          <div class="info-line">
+            <span class="muted">Turn</span>
+            <span>{{ turnLabel() }}</span>
+          </div>
+          <div class="info-line">
+            <span class="muted">State</span>
+            <span>{{ state() }}</span>
+          </div>
+          <div class="info-line">
+            <span class="muted">Game ID</span>
+            <span class="mono">{{ gameId() || '...' }}</span>
+          </div>
+          <div class="controls-column">
+            <button mat-flat-button color="primary" (click)="newGame()">New Game</button>
+            <mat-form-field appearance="outline" class="full">
+              <mat-label>Join game id</mat-label>
+              <input matInput #gid />
+            </mat-form-field>
+            <button mat-stroked-button color="accent" class="full" (click)="join(gid.value)">
+              Join Game
+            </button>
+          </div>
+        </mat-card-content>
+      </mat-card>
+    </div>
+  </main>
+</div>

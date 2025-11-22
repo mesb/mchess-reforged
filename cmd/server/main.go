@@ -166,6 +166,18 @@ func main() {
 	var store GameStore
 	var err error
 
+	withCORS := func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			if r.Method == http.MethodOptions {
+				return
+			}
+			h.ServeHTTP(w, r)
+		})
+	}
+
 	// Elegant Switch: If DB env is present, use Postgres. Else Memory.
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn != "" {
@@ -235,7 +247,7 @@ func main() {
 	})
 
 	log.Println("♟️  MCHESS API listening on :8080...")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(":8080", withCORS(http.DefaultServeMux)))
 }
 
 func handleGetState(w http.ResponseWriter, s *shell.GameSession, id string) {

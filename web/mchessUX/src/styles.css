@@ -1,0 +1,120 @@
+/* Global styles and Tailwind import */
+@import "tailwindcss";
+
+.board-container {
+  width: 100%;
+  max-width: 600px;
+  aspect-ratio: 1 / 1;
+  margin-left: auto;
+  margin-right: auto;
+  user-select: none;
+  touch-action: none;
+}
+
+.shell {
+  min-height: 100vh;
+  background: radial-gradient(circle at 20% 20%, rgba(50, 116, 190, 0.1), transparent 30%),
+    radial-gradient(circle at 80% 20%, rgba(190, 50, 150, 0.08), transparent 30%),
+    #0c0f16;
+}
+
+.brand-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.muted {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.muted.small {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.toolbar,
+.top-bar {
+  background: transparent;
+  color: white;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.headline {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.content {
+  padding: 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.hero {
+  width: 100%;
+  max-width: 1200px;
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+.board-card,
+.status-card {
+  background: rgba(15, 18, 26, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.glass {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.info-line {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+}
+
+.panel {
+  background: rgba(14, 16, 24, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.controls-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.full {
+  width: 100%;
+}
+
+.mono {
+  font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
+  font-size: 12px;
+}
