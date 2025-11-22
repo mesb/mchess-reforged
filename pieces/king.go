@@ -23,7 +23,7 @@ func (k *King) String() string {
 	return "♚"
 }
 
-func (k *King) ValidMoves(from address.Addr, board BoardView) []address.Addr {
+func (k *King) ValidMoves(from address.Addr, board BoardView, state GameStateView) []address.Addr {
 	dirs := [][2]int{
 		{1, 0}, {-1, 0}, {0, 1}, {0, -1},
 		{1, 1}, {-1, -1}, {1, -1}, {-1, 1},

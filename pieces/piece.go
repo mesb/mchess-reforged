@@ -9,12 +9,19 @@ const (
 	BLACK = 1
 )
 
+// GameStateView defines the subset of state that pieces need to see.
+// This prevents circular dependencies between 'pieces' and 'board'.
+type GameStateView interface {
+	GetEnPassant() *address.Addr
+}
+
 // Piece defines the behavior of any chess piece type.
 // Pieces are stateless and express only their color and movement rules.
 type Piece interface {
 	Color() int
 	String() string
-	ValidMoves(from address.Addr, board BoardView) []address.Addr
+	// ValidMoves now requires State to handle En Passant and Castling
+	ValidMoves(from address.Addr, board BoardView, state GameStateView) []address.Addr
 }
 
 // BoardView is a minimal interface to query board state without creating import cycles.

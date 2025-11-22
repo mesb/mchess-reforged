@@ -23,7 +23,7 @@ func (k *Knight) String() string {
 	return "♞"
 }
 
-func (k *Knight) ValidMoves(from address.Addr, board BoardView) []address.Addr {
+func (k *Knight) ValidMoves(from address.Addr, board BoardView, state GameStateView) []address.Addr {
 	deltas := [][2]int{
 		{-2, -1}, {-2, 1}, {-1, -2}, {-1, 2},
 		{1, -2}, {1, 2}, {2, -1}, {2, 1},

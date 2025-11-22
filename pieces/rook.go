@@ -23,7 +23,7 @@ func (r *Rook) String() string {
 	return "♜"
 }
 
-func (r *Rook) ValidMoves(from address.Addr, board BoardView) []address.Addr {
+func (r *Rook) ValidMoves(from address.Addr, board BoardView, state GameStateView) []address.Addr {
 	dirs := [][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
 	var moves []address.Addr
 	for _, dir := range dirs {

@@ -22,7 +22,7 @@ func (b *Bishop) String() string {
 	return "♝"
 }
 
-func (b *Bishop) ValidMoves(from address.Addr, board BoardView) []address.Addr {
+func (b *Bishop) ValidMoves(from address.Addr, board BoardView, state GameStateView) []address.Addr {
 	dirs := [][2]int{{1, 1}, {1, -1}, {-1, 1}, {-1, -1}}
 	var moves []address.Addr
 	for _, dir := range dirs {

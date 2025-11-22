@@ -12,6 +12,7 @@ import (
 // RuleEngine represents the core chess logic engine.
 type RuleEngine struct {
 	Board *board.Board
+	State *board.GameState // Added GameState to track metadata like En Passant
 	Turn  int
 	Log   *Log
 }
@@ -20,6 +21,7 @@ type RuleEngine struct {
 func New(b *board.Board) *RuleEngine {
 	return &RuleEngine{
 		Board: b,
+		State: board.NewGameState(), // Initialize default game state
 		Turn:  pieces.WHITE,
 		Log:   &Log{},
 	}
@@ -34,6 +36,27 @@ func (r *RuleEngine) MakeMove(from, to address.Addr) bool {
 	moving := r.Board.PieceAt(from)
 	target := r.Board.PieceAt(to)
 
+	// Handle En Passant Capture Logic
+	// If a pawn moves to the En Passant target square, it's a capture,
+	// but the target square itself is empty on the board.
+	if p, ok := moving.(*pieces.Pawn); ok {
+		if ep := r.State.GetEnPassant(); ep != nil && to.Equals(*ep) {
+			// Capture the pawn BEHIND the moving pawn
+			// White moves Up (positive rank), so victim is Down (Shift -1 rank)
+			// Black moves Down (negative rank), so victim is Up (Shift +1 rank)
+			captureRankDir := -1
+			if p.Color() == pieces.BLACK {
+				captureRankDir = 1
+			}
+
+			// The victim is at the 'to' file, but 'from' rank (conceptually adjacent to 'to' on previous rank)
+			if victimPos, ok := to.Shift(captureRankDir, 0); ok {
+				target = r.Board.PieceAt(victimPos) // Record for log
+				r.Board.Clear(victimPos)            // Remove victim from board
+			}
+		}
+	}
+
 	// Record move before applying
 	if r.Log != nil {
 		r.Log.Record(from, to, moving, target)
@@ -42,6 +65,9 @@ func (r *RuleEngine) MakeMove(from, to address.Addr) bool {
 	// Execute Move
 	r.Board.SetPiece(to, moving)
 	r.Board.Clear(from)
+
+	// Handle En Passant State Update (Must happen before turn switch)
+	r.updateEnPassantState(moving, from, to)
 
 	// Check for Promotion (Auto-Queen)
 	// Note: A full implementation would ask the user, but this is a safe default.
@@ -52,8 +78,24 @@ func (r *RuleEngine) MakeMove(from, to address.Addr) bool {
 		}
 	}
 
-	r.Turn = 1 - r.Turn // toggle turn
+	r.Turn = 1 - r.Turn   // toggle turn
+	r.State.Turn = r.Turn // Sync state
 	return true
+}
+
+// updateEnPassantState checks if a pawn moved 2 squares and sets the flag
+func (r *RuleEngine) updateEnPassantState(p pieces.Piece, from, to address.Addr) {
+	r.State.SetEnPassant(nil) // Default: clear it
+
+	if _, ok := p.(*pieces.Pawn); ok {
+		dr, _ := address.Delta(from, to)
+		if dr == 2 || dr == -2 {
+			// Set target to the square passed over
+			midRank := (int(from.Rank) + int(to.Rank)) / 2
+			target := address.MakeAddr(address.Rank(midRank), from.File)
+			r.State.SetEnPassant(&target)
+		}
+	}
 }
 
 // GetTurn returns the current player's color.
@@ -176,9 +218,8 @@ func (r *RuleEngine) IsLegalMove(from, to address.Addr) bool {
 		return false
 	}
 
-	// Note: Ideally ValidMoves should accept GameState to check en passant/castling
-	// For now, we rely on the piece's geometric movement.
-	legalMoves := piece.ValidMoves(from, r.Board)
+	// Note: ValidMoves now accepts GameState to check en passant/castling
+	legalMoves := piece.ValidMoves(from, r.Board, r.State)
 	for _, move := range legalMoves {
 		if move.Equals(to) {
 			return !r.WouldBeInCheck(from, to)

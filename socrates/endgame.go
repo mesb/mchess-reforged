@@ -25,7 +25,8 @@ func (r *RuleEngine) hasAnyLegalMove() bool {
 		if p.Color() != r.Turn {
 			continue
 		}
-		moves := p.ValidMoves(from, r.Board)
+		// Fix: Pass r.State to ValidMoves
+		moves := p.ValidMoves(from, r.Board, r.State)
 		for _, to := range moves {
 			if !r.WouldBeInCheck(from, to) {
 				return true

@@ -23,7 +23,7 @@ func (p *Pawn) String() string {
 	return "♟"
 }
 
-func (p *Pawn) ValidMoves(from address.Addr, b BoardView) []address.Addr {
+func (p *Pawn) ValidMoves(from address.Addr, b BoardView, state GameStateView) []address.Addr {
 	var moves []address.Addr
 	dir := 1
 	startRank := 1
@@ -32,11 +32,11 @@ func (p *Pawn) ValidMoves(from address.Addr, b BoardView) []address.Addr {
 		startRank = 6
 	}
 
-	// Forward 1 square
+	// 1. Forward Movement
 	if m1, ok := from.Shift(dir, 0); ok && b.IsEmpty(m1) {
 		moves = append(moves, m1)
 
-		// Forward 2 squares from initial rank
+		// Double move from start
 		if int(from.Rank) == startRank {
 			if m2, ok := from.Shift(2*dir, 0); ok && b.IsEmpty(m2) {
 				moves = append(moves, m2)
@@ -44,10 +44,18 @@ func (p *Pawn) ValidMoves(from address.Addr, b BoardView) []address.Addr {
 		}
 	}
 
-	// Diagonal captures
+	// 2. Captures (Standard + En Passant)
 	for _, df := range []int{-1, 1} {
 		if diag, ok := from.Shift(dir, df); ok {
+			// A: Standard Capture
 			if target := b.PieceAt(diag); target != nil && target.Color() != p.color {
+				moves = append(moves, diag)
+				continue
+			}
+
+			// B: En Passant Capture
+			// If the diagonal square is empty, but matches the En Passant target...
+			if ep := state.GetEnPassant(); ep != nil && diag.Equals(*ep) {
 				moves = append(moves, diag)
 			}
 		}

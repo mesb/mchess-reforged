@@ -29,3 +29,13 @@ func (s *GameState) SwitchTurn() {
 		s.FullmoveNumber++
 	}
 }
+
+// GetEnPassant returns the current En Passant target square (satisfies pieces.GameStateView).
+func (s *GameState) GetEnPassant() *address.Addr {
+	return s.EnPassant
+}
+
+// SetEnPassant updates the En Passant target square.
+func (s *GameState) SetEnPassant(target *address.Addr) {
+	s.EnPassant = target
+}

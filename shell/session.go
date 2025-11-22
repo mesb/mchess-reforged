@@ -19,8 +19,14 @@ type GameSession struct {
 // NewSession creates a fully initialized session with default board and state.
 func NewSession(renderer Renderer) *GameSession {
 	log := &socrates.Log{}
+
+	// Initialize the board and the game state (turn, castling, en passant)
+	b := board.InitStandard()
+	state := board.NewGameState()
+
 	engine := &socrates.RuleEngine{
-		Board: board.InitStandard(),
+		Board: b,
+		State: state, // Inject the State here
 		Turn:  pieces.WHITE,
 		Log:   log,
 	}
