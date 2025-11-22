@@ -18,6 +18,8 @@ type RuleEngine struct {
 
 	hash        uint64
 	hashHistory []uint64
+
+	tt map[uint64]ttEntry
 }
 
 func New(b *board.Board) *RuleEngine {
@@ -26,6 +28,7 @@ func New(b *board.Board) *RuleEngine {
 		State: board.NewGameState(),
 		Turn:  pieces.WHITE,
 		Log:   &Log{},
+		tt:    make(map[uint64]ttEntry),
 	}
 	r.resetHashHistory()
 	return r
@@ -380,6 +383,9 @@ func findKing(b *board.Board, color int) *address.Addr {
 func (r *RuleEngine) resetHashHistory() {
 	r.hash = computeHash(r.Board, r.State, r.Turn)
 	r.hashHistory = []uint64{r.hash}
+	if r.tt == nil {
+		r.tt = make(map[uint64]ttEntry)
+	}
 }
 
 func (r *RuleEngine) ResetHashHistory() {

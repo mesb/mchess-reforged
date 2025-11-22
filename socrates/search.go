@@ -48,7 +48,7 @@ func (r *RuleEngine) Search(depth int) SearchResult {
 	for _, m := range moves {
 		r.MakeMove(m.From, m.To, m.Promo)
 
-		score, visited := r.negamax(depth-1, -beta, -alpha)
+		score, visited := r.negamax(depth-1, 1, -beta, -alpha)
 		score = -score
 		totalNodes += visited + 1
 
@@ -67,8 +67,25 @@ func (r *RuleEngine) Search(depth int) SearchResult {
 }
 
 // negamax returns the score relative to the side to move and nodes visited.
-func (r *RuleEngine) negamax(depth, alpha, beta int) (int, int) {
+func (r *RuleEngine) negamax(depth, ply, alpha, beta int) (int, int) {
 	nodes := 1 // count this node
+	alphaOrig := alpha
+
+	if entry, ok := r.tt[r.hash]; ok && entry.depth >= depth {
+		score := fromTTScore(entry.score, ply)
+		switch entry.flag {
+		case ttExact:
+			return score, nodes
+		case ttLower:
+			if score >= beta {
+				return score, nodes
+			}
+		case ttUpper:
+			if score <= alpha {
+				return score, nodes
+			}
+		}
+	}
 
 	if r.isRepetition() {
 		return 0, nodes
@@ -86,7 +103,7 @@ func (r *RuleEngine) negamax(depth, alpha, beta int) (int, int) {
 	// 3. Game Over Detection
 	if len(moves) == 0 {
 		if r.IsInCheck(r.Turn) {
-			return -MateScore + depth, nodes
+			return -MateScore + ply, nodes
 		}
 		return 0, nodes // Stalemate
 	}
@@ -94,19 +111,21 @@ func (r *RuleEngine) negamax(depth, alpha, beta int) (int, int) {
 	// 4. Recursion
 	for _, m := range moves {
 		r.MakeMove(m.From, m.To, m.Promo)
-		score, childNodes := r.negamax(depth-1, -beta, -alpha)
+		score, childNodes := r.negamax(depth-1, ply+1, -beta, -alpha)
 		nodes += childNodes
 		r.UndoMove()
 
 		score = -score
 
 		if score >= beta {
+			r.storeTT(r.hash, depth, toTTScore(score, ply), ttLower, m)
 			return beta, nodes // Pruning
 		}
 		if score > alpha {
 			alpha = score
 		}
 	}
+	r.storeTT(r.hash, depth, toTTScore(alpha, ply), flagFrom(alpha, beta, alphaOrig), SimpleMove{})
 	return alpha, nodes
 }
 
@@ -139,11 +158,8 @@ func (r *RuleEngine) quiesce(alpha, beta int) (int, int) {
 		alpha = score
 	}
 
-	for _, m := range r.GenerateLegalMoves() {
+	for _, m := range r.GenerateCaptureMoves() {
 		// Only explore captures or promotions (as noisy moves).
-		if !r.isCapture(m) && m.Promo == 0 {
-			continue
-		}
 		r.MakeMove(m.From, m.To, m.Promo)
 		childScore, childNodes := r.quiesce(-beta, -alpha)
 		nodes += childNodes
@@ -213,6 +229,27 @@ func (r *RuleEngine) GenerateLegalMoves() []SimpleMove {
 	return moves
 }
 
+// GenerateCaptureMoves returns only captures/promotions to speed quiescence.
+func (r *RuleEngine) GenerateCaptureMoves() []SimpleMove {
+	moves := make([]SimpleMove, 0, 32)
+	r.Board.ForEachPiece(func(from address.Addr, p pieces.Piece) {
+		if p.Color() != r.Turn {
+			return
+		}
+		candidates := p.ValidMoves(from, r.Board, r.State)
+		for _, to := range candidates {
+			if r.IsLegalMove(from, to) && (r.isCapture(SimpleMove{From: from, To: to}) || isPromo(p, to)) {
+				promo := rune(0)
+				if isPromo(p, to) {
+					promo = 'q'
+				}
+				moves = append(moves, SimpleMove{From: from, To: to, Promo: promo})
+			}
+		}
+	})
+	return moves
+}
+
 func isPromo(p pieces.Piece, to address.Addr) bool {
 	if _, ok := p.(*pieces.Pawn); !ok {
 		return false
@@ -231,4 +268,24 @@ func (r *RuleEngine) isCapture(m SimpleMove) bool {
 		}
 	}
 	return false
+}
+
+func (r *RuleEngine) storeTT(hash uint64, depth int, score int, flag int, move SimpleMove) {
+	r.tt[hash] = ttEntry{
+		hash:  hash,
+		depth: depth,
+		score: score,
+		flag:  flag,
+		move:  move,
+	}
+}
+
+func flagFrom(score, beta, alphaOrig int) int {
+	if score <= alphaOrig {
+		return ttUpper
+	}
+	if score >= beta {
+		return ttLower
+	}
+	return ttExact
 }
