@@ -25,4 +25,7 @@ vendor/
 
 # OS metadata
 .DS_Store
+
+# Local engine binary
+mchess-engine
 EOF

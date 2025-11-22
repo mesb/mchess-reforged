@@ -160,3 +160,34 @@ func TestUndoRestoresState(t *testing.T) {
 		t.Fatal("Board not restored after undo")
 	}
 }
+
+func TestStalemateScenario(t *testing.T) {
+	// Classic stalemate: Black king on h8, White king on g6, White queen on f7.
+	fen := "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1"
+	b, state, err := board.FromFEN(fen)
+	if err != nil {
+		t.Fatalf("Failed to parse FEN: %v", err)
+	}
+
+	engine := New(b)
+	engine.State = state
+	engine.Turn = pieces.BLACK
+	engine.ResetHashHistory()
+
+	moves := engine.GenerateLegalMoves()
+	if len(moves) != 0 {
+		t.Errorf("Expected 0 legal moves (stalemate), found %d", len(moves))
+		for _, m := range moves {
+			t.Logf("Legal move found: %v -> %v", m.From, m.To)
+		}
+	}
+
+	if engine.IsInCheck(pieces.BLACK) {
+		t.Fatal("Black incorrectly reported in check in stalemate position")
+	}
+
+	result := engine.Search(1)
+	if result.Score != 0 {
+		t.Fatalf("Expected draw evaluation (0) in stalemate, got %d", result.Score)
+	}
+}

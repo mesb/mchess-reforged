@@ -34,6 +34,15 @@ func (r *RuleEngine) Search(depth int) SearchResult {
 
 	moves := r.GenerateLegalMoves()
 
+	// No legal moves: return mate/stalemate immediately.
+	if len(moves) == 0 {
+		score := 0
+		if r.IsInCheck(r.Turn) {
+			score = -MateScore
+		}
+		return SearchResult{Score: score, Nodes: 1}
+	}
+
 	totalNodes := 0
 
 	for _, m := range moves {
