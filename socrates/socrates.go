@@ -10,31 +10,40 @@ import (
 	"github.com/mesb/mchess/address"
 )
 
-// Dialog parses and performs a move command, e.g., "m e2e4"
+// ParseMove converts a string like "e2e4" or "a7a8q" into usable coordinates.
+// This is a pure function: no engine state required.
+func ParseMove(notation string) (from, to *address.Addr, promo rune, err error) {
+	if len(notation) < 4 || len(notation) > 5 {
+		return nil, nil, 0, errors.New("invalid notation: expected format 'e2e4' or 'a7a8q'")
+	}
+
+	from = parseSquare(notation[:2])
+	to = parseSquare(notation[2:4])
+	if from == nil || to == nil {
+		return nil, nil, 0, errors.New("invalid square coordinates")
+	}
+
+	if len(notation) == 5 {
+		promo = rune(notation[4])
+	}
+
+	return from, to, promo, nil
+}
+
+// Dialog parses and performs a move command for the CLI (e.g., "m e2e4").
 func Dialog(input string, engine *RuleEngine) error {
 	fields := strings.Fields(input)
 	if len(fields) != 2 {
 		return errors.New("invalid command: use 'm e2e4'")
 	}
 
-	notation := fields[1]
-	if len(notation) < 4 || len(notation) > 5 {
-		return errors.New("invalid notation: expected format 'e2e4' or 'a7a8q'")
+	from, to, promo, err := ParseMove(fields[1])
+	if err != nil {
+		return err
 	}
 
-	from := parseSquare(notation[:2])
-	to := parseSquare(notation[2:4])
-	if from == nil || to == nil {
-		return errors.New("invalid square coordinates")
-	}
-
-	var promoChar rune
-	if len(notation) == 5 {
-		promoChar = rune(notation[4])
-	}
-
-	if !engine.MakeMove(*from, *to, promoChar) {
-		return fmt.Errorf("illegal move %s", notation)
+	if !engine.MakeMove(*from, *to, promo) {
+		return fmt.Errorf("illegal move %s", fields[1])
 	}
 
 	return nil
