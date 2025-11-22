@@ -26,7 +26,7 @@ type GameStateResponse struct {
 	Turn   string   `json:"turn"` // "White" or "Black"
 	IsOver bool     `json:"is_game_over"`
 	Status string   `json:"status"`    // "Active", "Checkmate", etc.
-	Board  []string `json:"board_fen"` // Placeholder for board state
+	Board  []string `json:"board_fen"` // Standard FEN string (encapsulated in array)
 }
 
 type MoveRequest struct {
@@ -139,12 +139,15 @@ func handleGetState(w http.ResponseWriter, s *shell.GameSession, id string) {
 		turn = "Black"
 	}
 
+	// Generate Standard FEN string using the board method
+	fen := s.Engine.Board.ToFEN(s.Engine.State)
+
 	resp := GameStateResponse{
 		ID:     id,
 		Turn:   turn,
 		IsOver: isOver,
 		Status: status,
-		Board:  []string{"(Board serialization to be implemented)"},
+		Board:  []string{fen}, // Returns actual board state
 	}
 	json.NewEncoder(w).Encode(resp)
 }
