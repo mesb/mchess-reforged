@@ -1,67 +1,92 @@
+// --- board/fen.go ---
+
 package board
 
 import (
 	"fmt"
 	"strings"
 
-	"github.com/mesb/mchess/address"
 	"github.com/mesb/mchess/pieces"
 )
 
 // ToFEN serializes the entire game state into a standard FEN string.
+// It leverages the internal 1D array layout for maximum efficiency.
 func (b *Board) ToFEN(state *GameState) string {
 	var fen strings.Builder
+	// Pre-allocate approx capacity to minimize re-allocations (FEN max length ~90)
+	fen.Grow(90)
 
 	// 1. Piece Placement
+	// FEN starts at Rank 8 (indices 56-63) and moves down to Rank 1 (indices 0-7)
 	for r := 7; r >= 0; r-- {
 		emptyCount := 0
+		rowStart := r * 8 // Direct offset into 1D array
+
 		for f := 0; f < 8; f++ {
-			p := b.PieceAt(address.MakeAddr(address.Rank(r), address.File(f)))
+			// Direct array access: O(1) with no address calculation overhead
+			p := b.squares[rowStart+f]
+
 			if p == nil {
 				emptyCount++
 			} else {
 				if emptyCount > 0 {
-					fen.WriteString(fmt.Sprintf("%d", emptyCount))
+					// Write accumulated empty squares
+					fen.WriteByte(byte('0' + emptyCount)) // Fast int-to-byte conversion
 					emptyCount = 0
 				}
 				fen.WriteRune(pieceToFenChar(p))
 			}
 		}
+
 		if emptyCount > 0 {
-			fen.WriteString(fmt.Sprintf("%d", emptyCount))
+			fen.WriteByte(byte('0' + emptyCount))
 		}
+
 		if r > 0 {
-			fen.WriteRune('/')
+			fen.WriteByte('/')
 		}
 	}
 
 	// 2. Active Color
-	turn := "w"
+	fen.WriteByte(' ')
 	if state.Turn == pieces.BLACK {
-		turn = "b"
+		fen.WriteByte('b')
+	} else {
+		fen.WriteByte('w')
 	}
-	fen.WriteString(" " + turn)
 
 	// 3. Castling Rights
-	rights := state.CastlingRights
-	if rights == "" {
-		rights = "-"
+	fen.WriteByte(' ')
+	if state.CastlingRights == "" {
+		fen.WriteByte('-')
+	} else {
+		fen.WriteString(state.CastlingRights)
 	}
-	fen.WriteString(" " + rights)
 
 	// 4. En Passant Target
-	ep := "-"
+	fen.WriteByte(' ')
 	if state.EnPassant != nil {
-		ep = state.EnPassant.String()[:2] // "e3" from "e3::20"
+		// We only need the string representation here
+		// Optimization: Get string directly or compute algebraic safely
+		epStr := state.EnPassant.String()
+		if len(epStr) >= 2 {
+			fen.WriteString(epStr[:2])
+		} else {
+			fen.WriteByte('-')
+		}
+	} else {
+		fen.WriteByte('-')
 	}
-	fen.WriteString(" " + ep)
 
 	// 5. Halfmove Clock & Fullmove Number
-	fen.WriteString(fmt.Sprintf(" %d %d", state.HalfmoveClock, state.FullmoveNumber))
+	// Using fmt.Fprintf is cleaner here than manual string building for integers
+	fmt.Fprintf(&fen, " %d %d", state.HalfmoveClock, state.FullmoveNumber)
 
 	return fen.String()
 }
 
+// pieceToFenChar converts a piece to its FEN character (e.g., 'P', 'n', 'q').
+// White is uppercase, Black is lowercase.
 func pieceToFenChar(p pieces.Piece) rune {
 	var c rune
 	switch p.(type) {
@@ -77,10 +102,12 @@ func pieceToFenChar(p pieces.Piece) rune {
 		c = 'q'
 	case *pieces.King:
 		c = 'k'
+	default:
+		return '?'
 	}
 
 	if p.Color() == pieces.WHITE {
-		return c - 32 // Convert to Uppercase (ASCII math)
+		return c - 32 // ASCII optimization: 'a' (97) - 32 = 'A' (65)
 	}
 	return c
 }
