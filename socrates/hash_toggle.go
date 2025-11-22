@@ -22,7 +22,7 @@ func HashToggleCastling(h uint64, rights string) uint64 {
 // HashToggleEP XORs the hash with the en-passant file key.
 func HashToggleEP(h uint64, ep *address.Addr) uint64 {
 	if ep == nil {
-		return h ^ epKeys[0] // convention: epKeys[0] used only to toggle off if previously on same key
+		return h
 	}
 	return h ^ epKeys[int(ep.File)]
 }
