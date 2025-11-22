@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/mesb/mchess/pieces"
@@ -53,8 +54,38 @@ func showBoard(session *GameSession) {
 	session.Renderer.ShowCaptured(session.Captured)
 }
 
+// handleInput interprets the input and returns true if user wants to quit.
 func handleInput(input string, session *GameSession) bool {
-	// ... (Previous commands like 'b', 'q', 'h' remain)
+	if input == "" {
+		return false
+	}
+
+	// Restore shorthand support (e.g., allow "e2e4" instead of "m e2e4")
+	input = normalizeInput(input)
+
+	if input == "b" {
+		showBoard(session)
+		return false
+	}
+
+	if input == "q" {
+		session.Renderer.Message("👋 Goodbye!")
+		return true
+	}
+
+	if input == "h" {
+		session.Log.PrintLog()
+		return false
+	}
+
+	if input == "u" {
+		if !session.Engine.UndoMove() {
+			session.Renderer.Message("Nothing to undo.")
+		} else {
+			showBoard(session)
+		}
+		return false
+	}
 
 	if strings.HasPrefix(input, "m ") {
 		err := socrates.Dialog(input, session.Engine)
@@ -65,7 +96,7 @@ func handleInput(input string, session *GameSession) bool {
 
 		showBoard(session)
 
-		// Improved Endgame Handling
+		// Check Game End States
 		if session.Engine.IsCheckmate() {
 			session.Renderer.Message("🏁 CHECKMATE! " + colorName(session.Engine.GetTurn()) + " loses.")
 			return true
@@ -95,13 +126,15 @@ func handleInput(input string, session *GameSession) bool {
 }
 
 // normalizeInput auto-corrects inputs like 'e2e4' to 'm e2e4'
-// func normalizeInput(input string) string {
-// 	coordRe := regexp.MustCompile(`^[a-h][1-8][a-h][1-8]$`)
-// 	if coordRe.MatchString(input) {
-// 		return "m " + input
-// 	}
-// 	return input
-// }
+// Allows 4 char (e2e4) and 5 char (a7a8q) inputs.
+func normalizeInput(input string) string {
+	// Regex for standard move or promotion move
+	coordRe := regexp.MustCompile(`^[a-h][1-8][a-h][1-8][qrbn]?$`)
+	if coordRe.MatchString(input) {
+		return "m " + input
+	}
+	return input
+}
 
 // colorName returns a human-readable color string.
 func colorName(c int) string {
