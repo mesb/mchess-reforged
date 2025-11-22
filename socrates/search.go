@@ -80,6 +80,10 @@ func (r *RuleEngine) negamax(depth, ply, alpha, beta int) (int, int) {
 	nodes := 1 // count this node
 	alphaOrig := alpha
 
+	if r.IsDraw() {
+		return 0, nodes
+	}
+
 	if entry, ok := r.ttProbe(r.hash); ok && entry.depth >= depth {
 		score := fromTTScore(entry.score, ply)
 		switch entry.flag {

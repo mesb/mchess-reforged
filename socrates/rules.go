@@ -465,3 +465,16 @@ func (r *RuleEngine) isRepetition() bool {
 	}
 	return count >= 3
 }
+
+// IsDraw checks for draw conditions: 50-move rule and repetition (simple).
+func (r *RuleEngine) IsDraw() bool {
+	// 50-move rule: halfmove clock counts half-moves since last pawn move or capture.
+	if r.State.HalfmoveClock >= 100 {
+		return true
+	}
+	// Threefold repetition detection (based on hash occurrences).
+	if r.isRepetition() {
+		return true
+	}
+	return false
+}
