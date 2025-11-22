@@ -1,6 +1,5 @@
 // --- socrates/rules.go ---
 
-// This file defines the RuleEngine, the primary logic engine for enforcing legal chess moves.
 package socrates
 
 import (
@@ -9,25 +8,22 @@ import (
 	"github.com/mesb/mchess/pieces"
 )
 
-// RuleEngine represents the core chess logic engine.
 type RuleEngine struct {
 	Board *board.Board
-	State *board.GameState // Added GameState to track metadata like En Passant
+	State *board.GameState
 	Turn  int
 	Log   *Log
 }
 
-// New creates a new rule engine with the given board and a fresh move log.
 func New(b *board.Board) *RuleEngine {
 	return &RuleEngine{
 		Board: b,
-		State: board.NewGameState(), // Initialize default game state
+		State: board.NewGameState(),
 		Turn:  pieces.WHITE,
 		Log:   &Log{},
 	}
 }
 
-// MakeMove executes a move if legal, records it, and switches turns.
 func (r *RuleEngine) MakeMove(from, to address.Addr) bool {
 	if !r.IsLegalMove(from, to) {
 		return false
@@ -36,41 +32,57 @@ func (r *RuleEngine) MakeMove(from, to address.Addr) bool {
 	moving := r.Board.PieceAt(from)
 	target := r.Board.PieceAt(to)
 
-	// Handle En Passant Capture Logic
-	// If a pawn moves to the En Passant target square, it's a capture,
-	// but the target square itself is empty on the board.
+	// --- Logic: En Passant Capture ---
 	if p, ok := moving.(*pieces.Pawn); ok {
 		if ep := r.State.GetEnPassant(); ep != nil && to.Equals(*ep) {
-			// Capture the pawn BEHIND the moving pawn
-			// White moves Up (positive rank), so victim is Down (Shift -1 rank)
-			// Black moves Down (negative rank), so victim is Up (Shift +1 rank)
 			captureRankDir := -1
 			if p.Color() == pieces.BLACK {
 				captureRankDir = 1
 			}
-
-			// The victim is at the 'to' file, but 'from' rank (conceptually adjacent to 'to' on previous rank)
 			if victimPos, ok := to.Shift(captureRankDir, 0); ok {
-				target = r.Board.PieceAt(victimPos) // Record for log
-				r.Board.Clear(victimPos)            // Remove victim from board
+				target = r.Board.PieceAt(victimPos)
+				r.Board.Clear(victimPos)
 			}
 		}
 	}
 
-	// Record move before applying
+	// --- Logic: Castling Execution ---
+	// If King moves > 1 square, move the Rook too.
+	if _, isKing := moving.(*pieces.King); isKing {
+		df := int(to.File) - int(from.File)
+		if df == 2 || df == -2 {
+			rank := from.Rank
+			var rookFrom, rookTo address.Addr
+
+			if df == 2 { // Kingside (e -> g)
+				rookFrom = address.MakeAddr(rank, 7) // h-file
+				rookTo = address.MakeAddr(rank, 5)   // f-file
+			} else { // Queenside (e -> c)
+				rookFrom = address.MakeAddr(rank, 0) // a-file
+				rookTo = address.MakeAddr(rank, 3)   // d-file
+			}
+
+			// Move Rook
+			rook := r.Board.PieceAt(rookFrom)
+			r.Board.SetPiece(rookTo, rook)
+			r.Board.Clear(rookFrom)
+		}
+	}
+
+	// Record Move
 	if r.Log != nil {
 		r.Log.Record(from, to, moving, target)
 	}
 
-	// Execute Move
+	// Apply Main Move
 	r.Board.SetPiece(to, moving)
 	r.Board.Clear(from)
 
-	// Handle En Passant State Update (Must happen before turn switch)
+	// --- State Updates ---
 	r.updateEnPassantState(moving, from, to)
+	r.updateCastlingRights(moving, from) // Handle rights revocation
 
-	// Check for Promotion (Auto-Queen)
-	// Note: A full implementation would ask the user, but this is a safe default.
+	// Auto-Queen
 	if p, ok := moving.(*pieces.Pawn); ok {
 		rank := to.Rank
 		if (p.Color() == pieces.WHITE && rank == 7) || (p.Color() == pieces.BLACK && rank == 0) {
@@ -78,19 +90,16 @@ func (r *RuleEngine) MakeMove(from, to address.Addr) bool {
 		}
 	}
 
-	r.Turn = 1 - r.Turn   // toggle turn
-	r.State.Turn = r.Turn // Sync state
+	r.Turn = 1 - r.Turn
+	r.State.Turn = r.Turn
 	return true
 }
 
-// updateEnPassantState checks if a pawn moved 2 squares and sets the flag
 func (r *RuleEngine) updateEnPassantState(p pieces.Piece, from, to address.Addr) {
-	r.State.SetEnPassant(nil) // Default: clear it
-
+	r.State.SetEnPassant(nil)
 	if _, ok := p.(*pieces.Pawn); ok {
 		dr, _ := address.Delta(from, to)
 		if dr == 2 || dr == -2 {
-			// Set target to the square passed over
 			midRank := (int(from.Rank) + int(to.Rank)) / 2
 			target := address.MakeAddr(address.Rank(midRank), from.File)
 			r.State.SetEnPassant(&target)
@@ -98,23 +107,77 @@ func (r *RuleEngine) updateEnPassantState(p pieces.Piece, from, to address.Addr)
 	}
 }
 
-// GetTurn returns the current player's color.
-func (r *RuleEngine) GetTurn() int {
-	return r.Turn
+func (r *RuleEngine) updateCastlingRights(p pieces.Piece, from address.Addr) {
+	// 1. If King moves, lose all rights for that color
+	if _, ok := p.(*pieces.King); ok {
+		r.State.RevokeCastling(p.Color())
+		return
+	}
+
+	// 2. If Rook moves from start, lose that specific side's right
+	if _, ok := p.(*pieces.Rook); ok {
+		// White Rooks
+		if from.Equals(address.MakeAddr(0, 7)) { // h1
+			r.State.RevokeSide("K")
+		}
+		if from.Equals(address.MakeAddr(0, 0)) { // a1
+			r.State.RevokeSide("Q")
+		}
+		// Black Rooks
+		if from.Equals(address.MakeAddr(7, 7)) { // h8
+			r.State.RevokeSide("k")
+		}
+		if from.Equals(address.MakeAddr(7, 0)) { // a8
+			r.State.RevokeSide("q")
+		}
+	}
 }
 
-// IsInCheck determines if the King of the given color is under attack.
-// OPTIMIZATION: Looks outward from the King rather than iterating all enemy pieces.
+func (r *RuleEngine) IsLegalMove(from, to address.Addr) bool {
+	piece := r.Board.PieceAt(from)
+	if piece == nil || piece.Color() != r.Turn {
+		return false
+	}
+
+	legalMoves := piece.ValidMoves(from, r.Board, r.State)
+	for _, move := range legalMoves {
+		if move.Equals(to) {
+			// Special check for Castling: Cannot castle out of, through, or into check.
+			if _, isKing := piece.(*pieces.King); isKing {
+				df := int(to.File) - int(from.File)
+				if df == 2 || df == -2 {
+					// 1. Cannot castle if currently in check
+					if r.IsInCheck(r.Turn) {
+						return false
+					}
+					// 2. Cannot castle through check (check the middle square)
+					midFile := int(from.File) + (df / 2)
+					midSquare := address.MakeAddr(from.Rank, address.File(midFile))
+					if r.WouldBeInCheck(from, midSquare) {
+						return false
+					}
+				}
+			}
+
+			return !r.WouldBeInCheck(from, to)
+		}
+	}
+	return false
+}
+
+// --- Existing Helper Methods (Required for Compilation) ---
+
+func (r *RuleEngine) GetTurn() int { return r.Turn }
+
 func (r *RuleEngine) IsInCheck(color int) bool {
 	kingPos := findKing(r.Board, color)
 	if kingPos == nil {
-		return false // Should theoretically not happen in a valid game
+		return false
 	}
 	k := *kingPos
-
 	enemyColor := 1 - color
 
-	// 1. Check for Knights
+	// Knights
 	knightDeltas := [][2]int{{-2, -1}, {-2, 1}, {-1, -2}, {-1, 2}, {1, -2}, {1, 2}, {2, -1}, {2, 1}}
 	for _, d := range knightDeltas {
 		if pos, ok := k.Shift(d[0], d[1]); ok {
@@ -126,13 +189,11 @@ func (r *RuleEngine) IsInCheck(color int) bool {
 			}
 		}
 	}
-
-	// 2. Check for Pawns
-	pawnDir := 1 // incoming attack direction depends on our color
+	// Pawns
+	pawnDir := 1
 	if color == pieces.BLACK {
 		pawnDir = -1
 	}
-	// Pawns attack from diagonals
 	for _, dx := range []int{-1, 1} {
 		if pos, ok := k.Shift(pawnDir, dx); ok {
 			p := r.Board.PieceAt(pos)
@@ -143,30 +204,22 @@ func (r *RuleEngine) IsInCheck(color int) bool {
 			}
 		}
 	}
-
-	// 3. Check Sliding Pieces (Rook, Bishop, Queen)
-	// Orthogonal (Rook/Queen)
-	orthoDirs := [][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
-	if scanDirs(r.Board, k, orthoDirs, enemyColor, true, false) {
+	// Sliders
+	if scanDirs(r.Board, k, [][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}, enemyColor, true, false) {
 		return true
 	}
-
-	// Diagonal (Bishop/Queen)
-	diagDirs := [][2]int{{1, 1}, {1, -1}, {-1, 1}, {-1, -1}}
-	if scanDirs(r.Board, k, diagDirs, enemyColor, false, true) {
+	if scanDirs(r.Board, k, [][2]int{{1, 1}, {1, -1}, {-1, 1}, {-1, -1}}, enemyColor, false, true) {
 		return true
 	}
-
 	return false
 }
 
-// scanDirs sends a "ray" out from the King to see if a slider is aiming at it.
 func scanDirs(b *board.Board, start address.Addr, dirs [][2]int, enemyColor int, checkRook, checkBishop bool) bool {
 	for _, d := range dirs {
 		for i := 1; i < 8; i++ {
 			pos, ok := start.Shift(d[0]*i, d[1]*i)
 			if !ok {
-				break // Off board
+				break
 			}
 			p := b.PieceAt(pos)
 			if p != nil {
@@ -184,51 +237,24 @@ func scanDirs(b *board.Board, start address.Addr, dirs [][2]int, enemyColor int,
 						}
 					}
 				}
-				break // Blocked by any piece (friend or foe)
+				break
 			}
 		}
 	}
 	return false
 }
 
-// WouldBeInCheck simulates a move without copying the entire board.
-// OPTIMIZATION: Uses "Make-Unmake" pattern.
 func (r *RuleEngine) WouldBeInCheck(from, to address.Addr) bool {
 	moving := r.Board.PieceAt(from)
 	captured := r.Board.PieceAt(to)
-
-	// 1. Make the move
 	r.Board.SetPiece(to, moving)
 	r.Board.Clear(from)
-
-	// 2. Check legality
 	inCheck := r.IsInCheck(moving.Color())
-
-	// 3. Unmake the move (restore state)
 	r.Board.SetPiece(from, moving)
-	r.Board.SetPiece(to, captured) // captured is nil if empty, so this works safely
-
+	r.Board.SetPiece(to, captured)
 	return inCheck
 }
 
-// IsLegalMove determines whether a move from → to is valid under current rules.
-func (r *RuleEngine) IsLegalMove(from, to address.Addr) bool {
-	piece := r.Board.PieceAt(from)
-	if piece == nil || piece.Color() != r.Turn {
-		return false
-	}
-
-	// Note: ValidMoves now accepts GameState to check en passant/castling
-	legalMoves := piece.ValidMoves(from, r.Board, r.State)
-	for _, move := range legalMoves {
-		if move.Equals(to) {
-			return !r.WouldBeInCheck(from, to)
-		}
-	}
-	return false
-}
-
-// findKing locates the king of the given color on the board.
 func findKing(b *board.Board, color int) *address.Addr {
 	for pos, p := range b.All() {
 		if p.Color() == color {
