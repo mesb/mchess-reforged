@@ -19,7 +19,7 @@ type RuleEngine struct {
 	hash        uint64
 	hashHistory []uint64
 
-	tt  map[uint64]ttEntry
+	tt  []ttEntry
 	gen int
 
 	history [2][64][64]int // color, from, to
@@ -32,7 +32,7 @@ func New(b *board.Board) *RuleEngine {
 		State: board.NewGameState(),
 		Turn:  pieces.WHITE,
 		Log:   &Log{},
-		tt:    make(map[uint64]ttEntry),
+		tt:    make([]ttEntry, TTSize),
 	}
 	r.resetHashHistory()
 	return r
@@ -370,8 +370,8 @@ func findKing(b *board.Board, color int) *address.Addr {
 func (r *RuleEngine) resetHashHistory() {
 	r.hash = computeHash(r.Board, r.State, r.Turn)
 	r.hashHistory = []uint64{r.hash}
-	if r.tt == nil {
-		r.tt = make(map[uint64]ttEntry)
+	if r.tt == nil || len(r.tt) != TTSize {
+		r.tt = make([]ttEntry, TTSize)
 	}
 	r.gen = 0
 	for c := 0; c < 2; c++ {

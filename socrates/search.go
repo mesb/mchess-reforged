@@ -78,7 +78,7 @@ func (r *RuleEngine) negamax(depth, ply, alpha, beta int) (int, int) {
 	nodes := 1 // count this node
 	alphaOrig := alpha
 
-	if entry, ok := r.tt[r.hash]; ok && entry.depth >= depth {
+	if entry, ok := r.ttProbe(r.hash); ok && entry.depth >= depth {
 		score := fromTTScore(entry.score, ply)
 		switch entry.flag {
 		case ttExact:
@@ -325,8 +325,9 @@ func (r *RuleEngine) isCapture(m SimpleMove) bool {
 }
 
 func (r *RuleEngine) storeTT(hash uint64, depth int, score int, flag int, move SimpleMove) {
-	if old, ok := r.tt[hash]; ok {
-		// Prefer newer generation; if same gen prefer deeper; if older but much deeper, keep.
+	idx := hash & TTMask
+	old := r.tt[idx]
+	if old.hash == hash {
 		if old.gen == r.gen && old.depth > depth {
 			return
 		}
@@ -334,7 +335,7 @@ func (r *RuleEngine) storeTT(hash uint64, depth int, score int, flag int, move S
 			return
 		}
 	}
-	r.tt[hash] = ttEntry{
+	r.tt[idx] = ttEntry{
 		hash:  hash,
 		depth: depth,
 		score: score,
@@ -357,7 +358,7 @@ func flagFrom(score, beta, alphaOrig int) int {
 // orderMoves scores moves for better pruning: TT move first, then MVV-LVA captures, then promotions, then history/killer.
 func (r *RuleEngine) orderMoves(moves []SimpleMove, ply int) []SimpleMove {
 	ttMove := SimpleMove{}
-	if entry, ok := r.tt[r.hash]; ok {
+	if entry, ok := r.ttProbe(r.hash); ok {
 		ttMove = entry.move
 	}
 	type scored struct {

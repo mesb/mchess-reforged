@@ -16,6 +16,11 @@ const (
 	ttUpper
 )
 
+const (
+	TTSize = 1 << 20 // 1M entries; ~32-40MB
+	TTMask = TTSize - 1
+)
+
 func toTTScore(score, ply int) int {
 	if score > MateScore-1000 {
 		return score + ply
