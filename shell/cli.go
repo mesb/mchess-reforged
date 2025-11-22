@@ -13,15 +13,27 @@ import (
 	"github.com/mesb/mchess/socrates"
 )
 
-// CurrentSession is temporarily used by socrates.Dialog for session-wide hooks.
-var CurrentSession *GameSession
-
-// RunInteractive launches the recursive, coroutine-style CLI loop.
+// RunInteractive launches the main game loop.
+// OPTIMIZATION: Uses a standard loop instead of recursion to prevent stack overflow.
 func RunInteractive(session *GameSession) {
-	CurrentSession = session
 	showWelcome()
 	showBoard(session)
-	dispatch(session)
+
+	reader := bufio.NewReader(os.Stdin)
+
+	// Main Event Loop
+	for {
+		// Prompt
+		session.Renderer.Prompt(session.Engine.Turn)
+
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		shouldQuit := handleInput(input, session)
+		if shouldQuit {
+			break
+		}
+	}
 }
 
 // showWelcome prints the initial CLI banner and instructions.
@@ -40,25 +52,6 @@ func showWelcome() {
 func showBoard(session *GameSession) {
 	session.Renderer.Render(session.Engine.Board)
 	session.Renderer.ShowCaptured(session.Captured)
-}
-
-// dispatch starts the reactive input recursion.
-func dispatch(session *GameSession) {
-	reader := bufio.NewReader(os.Stdin)
-	go listen(session, reader)
-	select {} // block main to keep goroutines alive
-}
-
-// listen reads input and delegates handling recursively.
-func listen(session *GameSession, reader *bufio.Reader) {
-	input, _ := reader.ReadString('\n')
-	input = strings.TrimSpace(input)
-
-	if handleInput(input, session) {
-		os.Exit(0)
-	}
-
-	go listen(session, reader) // re-invoke self recursively as goroutine
 }
 
 // handleInput interprets the input and returns true if user wants to quit.
@@ -87,8 +80,9 @@ func handleInput(input string, session *GameSession) bool {
 	if input == "u" {
 		if !session.Engine.UndoMove() {
 			session.Renderer.Message("Nothing to undo.")
+		} else {
+			showBoard(session)
 		}
-		showBoard(session)
 		return false
 	}
 
@@ -98,7 +92,11 @@ func handleInput(input string, session *GameSession) bool {
 			session.Renderer.Message(err.Error())
 			return false
 		}
+
+		// Render board after successful move
 		showBoard(session)
+
+		// Check Game End States
 		if session.Engine.IsCheckmate() {
 			session.Renderer.Message("🏁 CHECKMATE! " + colorName(session.Engine.GetTurn()) + " is defeated.")
 			return true
@@ -107,6 +105,10 @@ func handleInput(input string, session *GameSession) bool {
 			session.Renderer.Message("⛔ STALEMATE. The position is drawn.")
 			return true
 		}
+		if session.Engine.IsInCheck(session.Engine.Turn) {
+			session.Renderer.Message("⚠️  CHECK!")
+		}
+
 		return false
 	}
 
