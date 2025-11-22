@@ -3,6 +3,8 @@
 package socrates
 
 import (
+	"strings"
+
 	"github.com/mesb/mchess/address"
 	"github.com/mesb/mchess/board"
 	"github.com/mesb/mchess/pieces"
@@ -26,12 +28,16 @@ func New(b *board.Board) *RuleEngine {
 
 // MakeMove executes a move. promoChar is optional (e.g., 'q', 'n').
 func (r *RuleEngine) MakeMove(from, to address.Addr, promoChar rune) bool {
+	stateBefore := snapshotState(r.State)
+
 	if !r.IsLegalMove(from, to) {
 		return false
 	}
 
 	moving := r.Board.PieceAt(from)
 	target := r.Board.PieceAt(to)
+	targetPos := to
+	rookMove := (*CastleMove)(nil)
 
 	// 50-Move Rule Tracking
 	_, isPawn := moving.(*pieces.Pawn)
@@ -48,6 +54,7 @@ func (r *RuleEngine) MakeMove(from, to address.Addr, promoChar rune) bool {
 				target = r.Board.PieceAt(victimPos) // [FIX] target updated
 				r.Board.Clear(victimPos)
 				isCapture = true
+				targetPos = victimPos
 			}
 		}
 	}
@@ -69,12 +76,21 @@ func (r *RuleEngine) MakeMove(from, to address.Addr, promoChar rune) bool {
 			rook := r.Board.PieceAt(rookFrom)
 			r.Board.SetPiece(rookTo, rook)
 			r.Board.Clear(rookFrom)
+			rookMove = &CastleMove{From: rookFrom, To: rookTo}
 		}
 	}
 
 	// Record Move (Must happen before board update destroys 'from' state)
 	if r.Log != nil {
-		r.Log.Record(from, to, moving, target) // [FIX] target used in log
+		r.Log.Record(Move{
+			From:      from,
+			To:        to,
+			Piece:     moving,
+			Target:    target,
+			TargetPos: &targetPos,
+			RookMove:  rookMove,
+			PrevState: stateBefore,
+		})
 	}
 
 	// Apply Main Move
@@ -83,7 +99,7 @@ func (r *RuleEngine) MakeMove(from, to address.Addr, promoChar rune) bool {
 
 	// --- State Updates ---
 	r.updateEnPassantState(moving, from, to)
-	r.updateCastlingRights(moving, from)
+	r.updateCastlingRights(moving, from, target, targetPos)
 	r.State.IncrementClock(isPawn, isCapture)
 
 	// --- Logic: Promotion ---
@@ -117,7 +133,7 @@ func (r *RuleEngine) updateEnPassantState(p pieces.Piece, from, to address.Addr)
 	}
 }
 
-func (r *RuleEngine) updateCastlingRights(p pieces.Piece, from address.Addr) {
+func (r *RuleEngine) updateCastlingRights(p pieces.Piece, from address.Addr, captured pieces.Piece, capturePos address.Addr) {
 	if _, ok := p.(*pieces.King); ok {
 		r.State.RevokeCastling(p.Color())
 		return
@@ -136,12 +152,39 @@ func (r *RuleEngine) updateCastlingRights(p pieces.Piece, from address.Addr) {
 			r.State.RevokeSide("q")
 		}
 	}
+	if captured != nil {
+		if _, ok := captured.(*pieces.Rook); ok {
+			// If you captured an enemy rook on its home square, revoke that side.
+			if capturePos.Equals(address.MakeAddr(0, 7)) {
+				r.State.RevokeSide("K")
+			}
+			if capturePos.Equals(address.MakeAddr(0, 0)) {
+				r.State.RevokeSide("Q")
+			}
+			if capturePos.Equals(address.MakeAddr(7, 7)) {
+				r.State.RevokeSide("k")
+			}
+			if capturePos.Equals(address.MakeAddr(7, 0)) {
+				r.State.RevokeSide("q")
+			}
+		}
+	}
 }
 
 func (r *RuleEngine) IsLegalMove(from, to address.Addr) bool {
 	piece := r.Board.PieceAt(from)
 	if piece == nil || piece.Color() != r.Turn {
 		return false
+	}
+
+	if _, isKing := piece.(*pieces.King); isKing {
+		df := int(to.File) - int(from.File)
+		if from.Rank == to.Rank && (df == 2 || df == -2) {
+			if r.canCastle(piece.Color(), df == 2, from, to) {
+				return true
+			}
+			return false
+		}
 	}
 
 	legalMoves := piece.ValidMoves(from, r.Board, r.State)
@@ -167,6 +210,59 @@ func (r *RuleEngine) IsLegalMove(from, to address.Addr) bool {
 }
 
 func (r *RuleEngine) GetTurn() int { return r.Turn }
+
+func (r *RuleEngine) canCastle(color int, kingSide bool, from, to address.Addr) bool {
+	rights := r.State.CastlingRights
+	if kingSide {
+		if (color == pieces.WHITE && !strings.Contains(rights, "K")) ||
+			(color == pieces.BLACK && !strings.Contains(rights, "k")) {
+			return false
+		}
+	} else {
+		if (color == pieces.WHITE && !strings.Contains(rights, "Q")) ||
+			(color == pieces.BLACK && !strings.Contains(rights, "q")) {
+			return false
+		}
+	}
+
+	rookFile := 7
+	if !kingSide {
+		rookFile = 0
+	}
+	rookPos := address.MakeAddr(from.Rank, address.File(rookFile))
+	rook := r.Board.PieceAt(rookPos)
+	if rook == nil {
+		return false
+	}
+	if _, ok := rook.(*pieces.Rook); !ok || rook.Color() != color {
+		return false
+	}
+
+	// Squares between king and rook must be empty.
+	step := 1
+	if !kingSide {
+		step = -1
+	}
+	for f := int(from.File) + step; f != rookFile; f += step {
+		pos := address.MakeAddr(from.Rank, address.File(f))
+		if !r.Board.IsEmpty(pos) {
+			return false
+		}
+	}
+
+	if r.IsInCheck(color) {
+		return false
+	}
+
+	// King cannot pass through or land on attacked squares.
+	midFile := int(from.File) + step
+	midSquare := address.MakeAddr(from.Rank, address.File(midFile))
+	if r.WouldBeInCheck(from, midSquare) || r.WouldBeInCheck(from, to) {
+		return false
+	}
+
+	return true
+}
 
 func (r *RuleEngine) IsInCheck(color int) bool {
 	kingPos := findKing(r.Board, color)
@@ -246,6 +342,22 @@ func scanDirs(b *board.Board, start address.Addr, dirs [][2]int, enemyColor int,
 func (r *RuleEngine) WouldBeInCheck(from, to address.Addr) bool {
 	moving := r.Board.PieceAt(from)
 	captured := r.Board.PieceAt(to)
+
+	// Handle en passant when simulating checks: remove the pawn that would be captured.
+	if pawn, ok := moving.(*pieces.Pawn); ok {
+		if ep := r.State.GetEnPassant(); ep != nil && to.Equals(*ep) && captured == nil && from.File != to.File {
+			captureRankDir := -1
+			if pawn.Color() == pieces.BLACK {
+				captureRankDir = 1
+			}
+			if victimPos, ok := to.Shift(captureRankDir, 0); ok {
+				captured = r.Board.PieceAt(victimPos)
+				r.Board.Clear(victimPos)
+				defer r.Board.SetPiece(victimPos, captured)
+			}
+		}
+	}
+
 	r.Board.SetPiece(to, moving)
 	r.Board.Clear(from)
 	inCheck := r.IsInCheck(moving.Color())

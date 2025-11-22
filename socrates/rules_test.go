@@ -50,3 +50,113 @@ func TestPromotion(t *testing.T) {
 		t.Errorf("Expected Knight, got %v", promoted)
 	}
 }
+
+func TestCastlingKingside(t *testing.T) {
+	b := board.NewBoard()
+	e := &RuleEngine{
+		Board: b,
+		State: board.NewGameState(),
+		Turn:  pieces.WHITE,
+		Log:   &Log{},
+	}
+
+	kingPos := address.MakeAddr(0, 4) // e1
+	rookPos := address.MakeAddr(0, 7) // h1
+	b.SetPiece(kingPos, pieces.NewKing(pieces.WHITE))
+	b.SetPiece(rookPos, pieces.NewRook(pieces.WHITE))
+
+	if !e.MakeMove(kingPos, address.MakeAddr(0, 6), 0) {
+		t.Fatal("Expected kingside castling to succeed")
+	}
+
+	if _, ok := b.PieceAt(address.MakeAddr(0, 6)).(*pieces.King); !ok {
+		t.Fatalf("King not on g1 after castling")
+	}
+	if _, ok := b.PieceAt(address.MakeAddr(0, 5)).(*pieces.Rook); !ok {
+		t.Fatalf("Rook not on f1 after castling")
+	}
+}
+
+func TestCastlingBlockedByAttack(t *testing.T) {
+	b := board.NewBoard()
+	e := &RuleEngine{
+		Board: b,
+		State: board.NewGameState(),
+		Turn:  pieces.WHITE,
+		Log:   &Log{},
+	}
+
+	kingPos := address.MakeAddr(0, 4) // e1
+	rookPos := address.MakeAddr(0, 7) // h1
+	b.SetPiece(kingPos, pieces.NewKing(pieces.WHITE))
+	b.SetPiece(rookPos, pieces.NewRook(pieces.WHITE))
+
+	// Black rook attacking f1, which should invalidate castling.
+	b.SetPiece(address.MakeAddr(7, 5), pieces.NewRook(pieces.BLACK)) // f8 -> attacks f1
+
+	if e.MakeMove(kingPos, address.MakeAddr(0, 6), 0) {
+		t.Fatal("Castling through attack should fail")
+	}
+}
+
+func TestEnPassantCannotExposeKing(t *testing.T) {
+	b := board.NewBoard()
+	e := &RuleEngine{
+		Board: b,
+		State: board.NewGameState(),
+		Turn:  pieces.WHITE,
+		Log:   &Log{},
+	}
+
+	whiteKing := pieces.NewKing(pieces.WHITE)
+	whitePawn := pieces.NewPawn(pieces.WHITE)
+	blackPawn := pieces.NewPawn(pieces.BLACK)
+	blackRook := pieces.NewRook(pieces.BLACK)
+
+	b.SetPiece(address.MakeAddr(0, 4), whiteKing) // e1
+	b.SetPiece(address.MakeAddr(4, 4), whitePawn) // e5
+	b.SetPiece(address.MakeAddr(4, 3), blackPawn) // d5 (just double-moved)
+	b.SetPiece(address.MakeAddr(7, 4), blackRook) // e8
+
+	epTarget := address.MakeAddr(5, 3) // d6
+	e.State.SetEnPassant(&epTarget)
+
+	if e.MakeMove(address.MakeAddr(4, 4), epTarget, 0) {
+		t.Fatal("En passant that exposes king to rook should be illegal")
+	}
+}
+
+func TestUndoRestoresState(t *testing.T) {
+	b := board.InitStandard()
+	e := New(b)
+
+	from := address.MakeAddr(1, 4) // e2
+	to := address.MakeAddr(3, 4)   // e4
+
+	if !e.MakeMove(from, to, 0) {
+		t.Fatal("Initial pawn double move failed")
+	}
+	if e.State.GetEnPassant() == nil {
+		t.Fatal("Expected en passant target after double move")
+	}
+
+	if !e.UndoMove() {
+		t.Fatal("UndoMove failed")
+	}
+
+	if e.State.GetEnPassant() != nil {
+		t.Fatal("En passant target not cleared after undo")
+	}
+	if e.State.CastlingRights != "KQkq" {
+		t.Fatalf("Castling rights not restored, got %s", e.State.CastlingRights)
+	}
+	if e.State.FullmoveNumber != 1 {
+		t.Fatalf("FullmoveNumber not restored, got %d", e.State.FullmoveNumber)
+	}
+	if e.State.Turn != pieces.WHITE || e.Turn != pieces.WHITE {
+		t.Fatal("Turn not restored after undo")
+	}
+	if b.PieceAt(from) == nil || !b.IsEmpty(to) {
+		t.Fatal("Board not restored after undo")
+	}
+}

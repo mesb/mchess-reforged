@@ -38,3 +38,20 @@ func NewSession(renderer Renderer) *GameSession {
 		Renderer: renderer,
 	}
 }
+
+// UpdateCaptured rebuilds captured-piece tracking from the move log.
+func (s *GameSession) UpdateCaptured() {
+	s.Captured = map[int][]pieces.Piece{
+		pieces.WHITE: {},
+		pieces.BLACK: {},
+	}
+	if s.Log == nil {
+		return
+	}
+	for _, m := range s.Log.Moves() {
+		if m.Target != nil {
+			c := m.Target.Color()
+			s.Captured[c] = append(s.Captured[c], m.Target)
+		}
+	}
+}

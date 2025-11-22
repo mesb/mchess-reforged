@@ -82,6 +82,7 @@ func handleInput(input string, session *GameSession) bool {
 		if !session.Engine.UndoMove() {
 			session.Renderer.Message("Nothing to undo.")
 		} else {
+			session.UpdateCaptured()
 			showBoard(session)
 		}
 		return false
@@ -94,6 +95,7 @@ func handleInput(input string, session *GameSession) bool {
 			return false
 		}
 
+		session.UpdateCaptured()
 		showBoard(session)
 
 		// Check Game End States

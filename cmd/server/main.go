@@ -15,7 +15,10 @@ import (
 
 	_ "github.com/lib/pq" // Postgres Driver
 
+	"github.com/mesb/mchess/address"
+	"github.com/mesb/mchess/board"
 	"github.com/mesb/mchess/pgn"
+	"github.com/mesb/mchess/pieces"
 	"github.com/mesb/mchess/shell"
 	"github.com/mesb/mchess/socrates"
 )
@@ -27,11 +30,12 @@ type CreateGameResponse struct {
 }
 
 type GameStateResponse struct {
-	ID     string   `json:"game_id"`
-	Turn   string   `json:"turn"`
-	IsOver bool     `json:"is_game_over"`
-	Status string   `json:"status"`
-	Board  []string `json:"board_fen"`
+	ID       string     `json:"game_id"`
+	Turn     string     `json:"turn"`
+	IsOver   bool       `json:"is_game_over"`
+	Status   string     `json:"status"`
+	BoardFEN string     `json:"board_fen"`
+	Board    [][]string `json:"board"`
 }
 
 type MoveRequest struct {
@@ -210,7 +214,12 @@ func handleGetState(w http.ResponseWriter, s *shell.GameSession, id string) {
 	fen := s.Engine.Board.ToFEN(s.Engine.State)
 
 	json.NewEncoder(w).Encode(GameStateResponse{
-		ID: id, Turn: turn, IsOver: isOver, Status: status, Board: []string{fen},
+		ID:       id,
+		Turn:     turn,
+		IsOver:   isOver,
+		Status:   status,
+		BoardFEN: fen,
+		Board:    materializeBoard(s.Engine.Board),
 	})
 }
 
@@ -237,5 +246,61 @@ func handleMove(w http.ResponseWriter, r *http.Request, s *shell.GameSession, st
 		log.Printf("Failed to save game: %v", err)
 	}
 
-	handleGetState(w, s, "current")
+	handleGetState(w, s, id)
+}
+
+func materializeBoard(b *board.Board) [][]string {
+	out := make([][]string, 8)
+	for r := 7; r >= 0; r-- {
+		row := make([]string, 8)
+		for f := 0; f < 8; f++ {
+			a := address.MakeAddr(address.Rank(r), address.File(f))
+			p := b.PieceAt(a)
+			if p == nil {
+				row[f] = "--"
+				continue
+			}
+			row[f] = pieceSymbol(p)
+		}
+		out[7-r] = row
+	}
+	return out
+}
+
+func pieceSymbol(p pieces.Piece) string {
+	switch t := p.(type) {
+	case *pieces.Pawn:
+		if t.Color() == pieces.WHITE {
+			return "P"
+		}
+		return "p"
+	case *pieces.Rook:
+		if t.Color() == pieces.WHITE {
+			return "R"
+		}
+		return "r"
+	case *pieces.Knight:
+		if t.Color() == pieces.WHITE {
+			return "N"
+		}
+		return "n"
+	case *pieces.Bishop:
+		if t.Color() == pieces.WHITE {
+			return "B"
+		}
+		return "b"
+	case *pieces.Queen:
+		if t.Color() == pieces.WHITE {
+			return "Q"
+		}
+		return "q"
+	case *pieces.King:
+		if t.Color() == pieces.WHITE {
+			return "K"
+		}
+		return "k"
+	default:
+		_ = t
+		return ""
+	}
 }

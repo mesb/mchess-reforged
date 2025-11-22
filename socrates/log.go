@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/mesb/mchess/address"
+	"github.com/mesb/mchess/board"
 	"github.com/mesb/mchess/pieces"
 )
 
@@ -16,6 +17,58 @@ type Move struct {
 	To     address.Addr
 	Piece  pieces.Piece
 	Target pieces.Piece // may be nil
+
+	// TargetPos records where Target was removed from (needed for en passant).
+	TargetPos *address.Addr
+
+	// RookMove records the rook displacement during castling.
+	RookMove *CastleMove
+
+	// PrevState restores the full game state (turn, clocks, EP, castling).
+	PrevState StateSnapshot
+}
+
+// CastleMove describes the rook motion in a castle.
+type CastleMove struct {
+	From address.Addr
+	To   address.Addr
+}
+
+// StateSnapshot is a copy of GameState, including a safe clone of EnPassant.
+type StateSnapshot struct {
+	Turn           int
+	CastlingRights string
+	EnPassant      *address.Addr
+	HalfmoveClock  int
+	FullmoveNumber int
+}
+
+func snapshotState(s *board.GameState) StateSnapshot {
+	var ep *address.Addr
+	if s.EnPassant != nil {
+		addrCopy := *s.EnPassant
+		ep = &addrCopy
+	}
+	return StateSnapshot{
+		Turn:           s.Turn,
+		CastlingRights: s.CastlingRights,
+		EnPassant:      ep,
+		HalfmoveClock:  s.HalfmoveClock,
+		FullmoveNumber: s.FullmoveNumber,
+	}
+}
+
+func applySnapshot(s *board.GameState, snap StateSnapshot) {
+	s.Turn = snap.Turn
+	s.CastlingRights = snap.CastlingRights
+	s.HalfmoveClock = snap.HalfmoveClock
+	s.FullmoveNumber = snap.FullmoveNumber
+	if snap.EnPassant != nil {
+		addrCopy := *snap.EnPassant
+		s.EnPassant = &addrCopy
+	} else {
+		s.EnPassant = nil
+	}
 }
 
 // Log tracks the full history of moves for a game.
@@ -24,13 +77,8 @@ type Log struct {
 }
 
 // Record stores a move after it has occurred.
-func (l *Log) Record(from, to address.Addr, moving, captured pieces.Piece) {
-	l.moves = append(l.moves, Move{
-		From:   from,
-		To:     to,
-		Piece:  moving,
-		Target: captured,
-	})
+func (l *Log) Record(m Move) {
+	l.moves = append(l.moves, m)
 }
 
 // UndoMove reverts the last move.
@@ -43,15 +91,27 @@ func (r *RuleEngine) UndoMove() bool {
 	latest := r.Log.moves[len(r.Log.moves)-1]
 	r.Log.moves = r.Log.moves[:len(r.Log.moves)-1]
 
+	applySnapshot(r.State, latest.PrevState)
+	r.Turn = r.State.Turn
+
+	// Undo castling rook move first so the king restore does not overwrite it.
+	if latest.RookMove != nil {
+		rook := r.Board.PieceAt(latest.RookMove.To)
+		r.Board.SetPiece(latest.RookMove.From, rook)
+		r.Board.Clear(latest.RookMove.To)
+	}
+
 	r.Board.SetPiece(latest.From, latest.Piece)
+
 	if latest.Target != nil {
-		r.Board.SetPiece(latest.To, latest.Target)
+		restoreTo := latest.To
+		if latest.TargetPos != nil {
+			restoreTo = *latest.TargetPos
+		}
+		r.Board.SetPiece(restoreTo, latest.Target)
 	} else {
 		r.Board.Clear(latest.To)
 	}
-
-	// Switch turn back
-	r.Turn = 1 - r.Turn
 
 	return true
 }
