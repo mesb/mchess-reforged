@@ -191,3 +191,21 @@ func TestStalemateScenario(t *testing.T) {
 		t.Fatalf("Expected draw evaluation (0) in stalemate, got %d", result.Score)
 	}
 }
+
+func TestKingCannotApproachKing(t *testing.T) {
+	fen := "8/6k1/8/5K2/3P3P/2PB4/6Rr/4R3 w - - 2 41"
+	b, state, err := board.FromFEN(fen)
+	if err != nil {
+		t.Fatalf("Invalid FEN: %v", err)
+	}
+	r := New(b)
+	r.State = state
+	r.Turn = pieces.WHITE
+
+	from := address.MakeAddr(4, 5) // f5
+	to := address.MakeAddr(5, 6)   // g6
+
+	if r.IsLegalMove(from, to) {
+		t.Fatal("Engine allowed King to move adjacent to enemy King (f5->g6)")
+	}
+}

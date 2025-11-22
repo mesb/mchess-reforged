@@ -316,6 +316,19 @@ func (r *RuleEngine) IsInCheck(color int) bool {
 	if scanDirs(r.Board, k, [][2]int{{1, 1}, {1, -1}, {-1, 1}, {-1, -1}}, enemyColor, false, true) {
 		return true
 	}
+
+	// Enemy King adjacency
+	kingDeltas := [][2]int{{-1, -1}, {-1, 0}, {-1, 1}, {0, -1}, {0, 1}, {1, -1}, {1, 0}, {1, 1}}
+	for _, d := range kingDeltas {
+		if pos, ok := k.Shift(d[0], d[1]); ok {
+			p := r.Board.PieceAt(pos)
+			if p != nil && p.Color() == enemyColor {
+				if _, isKing := p.(*pieces.King); isKing {
+					return true
+				}
+			}
+		}
+	}
 	return false
 }
 
