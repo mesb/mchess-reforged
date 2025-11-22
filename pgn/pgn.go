@@ -2,7 +2,7 @@
 
 // Package pgn provides a simple encoder/decoder for storing and loading games
 // in Portable Game Notation (PGN), a standard format used by chess engines.
-package png
+package pgn
 
 import (
 	"fmt"
