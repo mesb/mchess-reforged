@@ -32,6 +32,7 @@ func NewSession(renderer Renderer) *GameSession {
 		Turn:  pieces.WHITE,
 		Log:   log,
 	}
+	engine.ResetHashHistory()
 
 	return &GameSession{
 		Engine:   engine,

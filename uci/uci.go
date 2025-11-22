@@ -78,6 +78,7 @@ func handlePosition(eng *socrates.RuleEngine, args []string) {
 			eng.Board = b
 			eng.State = s
 			eng.Turn = s.Turn
+			eng.ResetHashHistory()
 		}
 	}
 

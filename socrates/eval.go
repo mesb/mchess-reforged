@@ -16,11 +16,18 @@ const (
 	ValueRook   = 500
 	ValueQueen  = 900
 	ValueKing   = 20000
+
+	MobilityWeight = 2
 )
 
 // Evaluate returns the score of the board from White's perspective.
 // Positive = White advantage, Negative = Black advantage.
 func Evaluate(b *board.Board) int {
+	return EvaluatePosition(b, nil)
+}
+
+// EvaluatePosition includes optional state for mobility-aware scoring.
+func EvaluatePosition(b *board.Board, state *board.GameState) int {
 	score := 0
 	b.ForEachPiece(func(sq address.Addr, p pieces.Piece) {
 		val := 0
@@ -40,6 +47,12 @@ func Evaluate(b *board.Board) int {
 			val = ValueQueen + pstQueen[mirror(p.Color(), idx)]
 		case *pieces.King:
 			val = ValueKing + pstKingMid[mirror(p.Color(), idx)]
+		}
+
+		// Mobility bonus encourages development and activity.
+		if state != nil {
+			m := p.ValidMoves(sq, b, state)
+			val += len(m) * MobilityWeight
 		}
 
 		// 2. Accumulate

@@ -113,6 +113,13 @@ func (r *RuleEngine) UndoMove() bool {
 		r.Board.Clear(latest.To)
 	}
 
+	if len(r.hashHistory) > 1 {
+		r.hashHistory = r.hashHistory[:len(r.hashHistory)-1]
+		r.hash = r.hashHistory[len(r.hashHistory)-1]
+	} else if len(r.hashHistory) == 1 {
+		r.hash = r.hashHistory[0]
+	}
+
 	return true
 }
 

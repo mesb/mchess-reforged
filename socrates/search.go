@@ -11,6 +11,7 @@ const (
 	MaxScore  = 30000
 	MinScore  = -30000
 	MateScore = 20000
+	EvalClamp = MateScore - 500
 )
 
 // SearchResult holds the best move found and its evaluation.
@@ -57,9 +58,14 @@ func (r *RuleEngine) Search(depth int) SearchResult {
 func (r *RuleEngine) negamax(depth, alpha, beta int) (int, int) {
 	nodes := 1 // count this node
 
+	if r.isRepetition() {
+		return 0, nodes
+	}
+
 	// 1. Leaf Node: Return Static Evaluation
 	if depth == 0 {
-		return r.evaluateRelative(), nodes
+		score, qNodes := r.quiesce(alpha, beta)
+		return score, nodes + qNodes
 	}
 
 	// 2. Generate Moves
@@ -68,7 +74,7 @@ func (r *RuleEngine) negamax(depth, alpha, beta int) (int, int) {
 	// 3. Game Over Detection
 	if len(moves) == 0 {
 		if r.IsInCheck(r.Turn) {
-			return -MateScore + (100 - depth), nodes
+			return -MateScore + depth, nodes
 		}
 		return 0, nodes // Stalemate
 	}
@@ -96,11 +102,52 @@ func (r *RuleEngine) negamax(depth, alpha, beta int) (int, int) {
 // Evaluate() returns White - Black.
 // If it's Black's turn, we want Black - White (which is -(White - Black)).
 func (r *RuleEngine) evaluateRelative() int {
-	score := Evaluate(r.Board)
+	score := EvaluatePosition(r.Board, r.State)
 	if r.Turn == pieces.BLACK {
 		return -score
 	}
 	return score
+}
+
+// quiesce searches capture sequences to reduce horizon effects.
+func (r *RuleEngine) quiesce(alpha, beta int) (int, int) {
+	nodes := 1
+	score := r.evaluateRelative()
+	if score > EvalClamp {
+		score = EvalClamp
+	}
+	if score < -EvalClamp {
+		score = -EvalClamp
+	}
+
+	if score >= beta {
+		return beta, nodes
+	}
+	if score > alpha {
+		alpha = score
+	}
+
+	for _, m := range r.GenerateLegalMoves() {
+		// Only explore captures or promotions (as noisy moves).
+		if !r.isCapture(m) && m.Promo == 0 {
+			continue
+		}
+		r.MakeMove(m.From, m.To, m.Promo)
+		childScore, childNodes := r.quiesce(-beta, -alpha)
+		nodes += childNodes
+		r.UndoMove()
+
+		childScore = -childScore
+
+		if childScore >= beta {
+			return beta, nodes
+		}
+		if childScore > alpha {
+			alpha = childScore
+		}
+	}
+
+	return alpha, nodes
 }
 
 // SimpleMove is a lightweight struct for move generation.
@@ -123,19 +170,27 @@ func (r *RuleEngine) GenerateLegalMoves() []SimpleMove {
 		candidates := p.ValidMoves(from, r.Board, r.State)
 		for _, to := range candidates {
 			if r.IsLegalMove(from, to) {
+				target := r.Board.PieceAt(to)
+				isPawn := false
+				if _, ok := p.(*pieces.Pawn); ok {
+					isPawn = true
+				}
+				isEnPassantCapture := target == nil && isPawn && from.File != to.File
+				capturing := target != nil || isEnPassantCapture
+
 				if isPromo(p, to) {
 					move := SimpleMove{from, to, 'q'}
-					if r.Board.IsEmpty(to) {
-						quiets = append(quiets, move)
-					} else {
+					if capturing {
 						captures = append(captures, move)
+					} else {
+						quiets = append(quiets, move)
 					}
 				} else {
 					move := SimpleMove{from, to, 0}
-					if r.Board.IsEmpty(to) {
-						quiets = append(quiets, move)
-					} else {
+					if capturing {
 						captures = append(captures, move)
+					} else {
+						quiets = append(quiets, move)
 					}
 				}
 			}
@@ -151,4 +206,17 @@ func isPromo(p pieces.Piece, to address.Addr) bool {
 		return false
 	}
 	return to.Rank == 0 || to.Rank == 7
+}
+
+func (r *RuleEngine) isCapture(m SimpleMove) bool {
+	if !r.Board.IsEmpty(m.To) {
+		return true
+	}
+	// En passant detection: pawn moving diagonally into empty square
+	if fromPiece := r.Board.PieceAt(m.From); fromPiece != nil {
+		if _, ok := fromPiece.(*pieces.Pawn); ok && m.From.File != m.To.File {
+			return true
+		}
+	}
+	return false
 }

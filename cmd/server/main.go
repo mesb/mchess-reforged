@@ -137,6 +137,7 @@ func (s *PostgresStore) Get(id string) (*shell.GameSession, error) {
 			session.Engine.Board = board
 			session.Engine.State = state
 			session.Engine.Turn = state.Turn
+			session.Engine.ResetHashHistory()
 			return session, nil
 		}
 		// fall back to PGN replay if FEN invalid

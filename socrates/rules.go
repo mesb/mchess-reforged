@@ -15,15 +15,20 @@ type RuleEngine struct {
 	State *board.GameState
 	Turn  int
 	Log   *Log
+
+	hash        uint64
+	hashHistory []uint64
 }
 
 func New(b *board.Board) *RuleEngine {
-	return &RuleEngine{
+	r := &RuleEngine{
 		Board: b,
 		State: board.NewGameState(),
 		Turn:  pieces.WHITE,
 		Log:   &Log{},
 	}
+	r.resetHashHistory()
+	return r
 }
 
 // MakeMove executes a move. promoChar is optional (e.g., 'q', 'n').
@@ -117,6 +122,8 @@ func (r *RuleEngine) MakeMove(from, to address.Addr, promoChar rune) bool {
 	if moving.Color() == pieces.BLACK {
 		r.State.FullmoveNumber++
 	}
+
+	r.refreshHashHistory()
 
 	return true
 }
@@ -368,4 +375,32 @@ func (r *RuleEngine) WouldBeInCheck(from, to address.Addr) bool {
 
 func findKing(b *board.Board, color int) *address.Addr {
 	return b.FindKing(color)
+}
+
+func (r *RuleEngine) resetHashHistory() {
+	r.hash = computeHash(r.Board, r.State, r.Turn)
+	r.hashHistory = []uint64{r.hash}
+}
+
+func (r *RuleEngine) ResetHashHistory() {
+	r.resetHashHistory()
+}
+
+func (r *RuleEngine) refreshHashHistory() {
+	r.hash = computeHash(r.Board, r.State, r.Turn)
+	r.hashHistory = append(r.hashHistory, r.hash)
+}
+
+func (r *RuleEngine) isRepetition() bool {
+	if len(r.hashHistory) < 3 {
+		return false
+	}
+	current := r.hashHistory[len(r.hashHistory)-1]
+	count := 0
+	for _, h := range r.hashHistory {
+		if h == current {
+			count++
+		}
+	}
+	return count >= 3
 }
