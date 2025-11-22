@@ -410,6 +410,26 @@ func (r *RuleEngine) refreshHashHistory() {
 	r.hashHistory = append(r.hashHistory, r.hash)
 }
 
+// nullMove switches turn without moving a piece (for null-move pruning).
+func (r *RuleEngine) nullMove() StateSnapshot {
+	snap := snapshotState(r.State)
+	r.State.SetEnPassant(nil)
+	r.Turn = 1 - r.Turn
+	r.State.Turn = r.Turn
+	r.refreshHashHistory()
+	return snap
+}
+
+// undoNullMove restores state after a null move.
+func (r *RuleEngine) undoNullMove(snap StateSnapshot) {
+	applySnapshot(r.State, snap)
+	r.Turn = r.State.Turn
+	if len(r.hashHistory) > 1 {
+		r.hashHistory = r.hashHistory[:len(r.hashHistory)-1]
+		r.hash = r.hashHistory[len(r.hashHistory)-1]
+	}
+}
+
 func (r *RuleEngine) isRepetition() bool {
 	if len(r.hashHistory) < 3 {
 		return false

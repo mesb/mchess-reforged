@@ -5,6 +5,7 @@ package socrates
 import (
 	"github.com/mesb/mchess/address"
 	"github.com/mesb/mchess/pieces"
+	"sort"
 )
 
 const (
@@ -27,12 +28,18 @@ type SearchResult struct {
 
 // Search runs the Alpha-Beta Negamax algorithm to a fixed depth.
 func (r *RuleEngine) Search(depth int) SearchResult {
+	// Opening book try
+	if bm := r.BookMove(); bm != nil {
+		return SearchResult{From: bm.From, To: bm.To, Score: 0, Nodes: 0}
+	}
+
 	alpha := MinScore
 	beta := MaxScore
 
 	bestMove := SearchResult{Score: MinScore}
 
 	moves := r.GenerateLegalMoves()
+	moves = r.orderMoves(moves)
 
 	// No legal moves: return mate/stalemate immediately.
 	if len(moves) == 0 {
@@ -99,6 +106,7 @@ func (r *RuleEngine) negamax(depth, ply, alpha, beta int) (int, int) {
 
 	// 2. Generate Moves
 	moves := r.GenerateLegalMoves()
+	moves = r.orderMoves(moves)
 
 	// 3. Game Over Detection
 	if len(moves) == 0 {
@@ -108,12 +116,31 @@ func (r *RuleEngine) negamax(depth, ply, alpha, beta int) (int, int) {
 		return 0, nodes // Stalemate
 	}
 
-	// 4. Recursion
+	// 4. Null-move pruning
+	if depth >= 3 && !r.IsInCheck(r.Turn) {
+		snap := r.nullMove()
+		scoreNM, nmNodes := r.negamax(depth-1-2, ply+1, -beta, -beta+1)
+		nodes += nmNodes
+		scoreNM = -scoreNM
+		r.undoNullMove(snap)
+		if scoreNM >= beta {
+			return beta, nodes
+		}
+	}
+
+	// 5. Recursion with LMR
+	moveIndex := 0
 	for _, m := range moves {
 		r.MakeMove(m.From, m.To, m.Promo)
-		score, childNodes := r.negamax(depth-1, ply+1, -beta, -alpha)
+		reduction := 0
+		if depth >= 3 && moveIndex >= 4 && !r.isCapture(m) && m.Promo == 0 {
+			reduction = 1
+		}
+		childDepth := depth - 1 - reduction
+		score, childNodes := r.negamax(childDepth, ply+1, -beta, -alpha)
 		nodes += childNodes
 		r.UndoMove()
+		moveIndex++
 
 		score = -score
 
@@ -144,22 +171,36 @@ func (r *RuleEngine) evaluateRelative() int {
 func (r *RuleEngine) quiesce(alpha, beta int) (int, int) {
 	nodes := 1
 	score := r.evaluateRelative()
-	if score > EvalClamp {
-		score = EvalClamp
-	}
-	if score < -EvalClamp {
-		score = -EvalClamp
+	inCheck := r.IsInCheck(r.Turn)
+
+	if !inCheck {
+		if score > EvalClamp {
+			score = EvalClamp
+		}
+		if score < -EvalClamp {
+			score = -EvalClamp
+		}
+
+		if score >= beta {
+			return beta, nodes
+		}
+		if score > alpha {
+			alpha = score
+		}
 	}
 
-	if score >= beta {
-		return beta, nodes
-	}
-	if score > alpha {
-		alpha = score
+	var moves []SimpleMove
+	if inCheck {
+		// When in check, search all legal replies (ordered).
+		moves = r.orderMoves(r.GenerateLegalMoves())
+		if len(moves) == 0 {
+			return -MateScore, nodes
+		}
+	} else {
+		moves = r.GenerateCaptureMoves()
 	}
 
-	for _, m := range r.GenerateCaptureMoves() {
-		// Only explore captures or promotions (as noisy moves).
+	for _, m := range moves {
 		r.MakeMove(m.From, m.To, m.Promo)
 		childScore, childNodes := r.quiesce(-beta, -alpha)
 		nodes += childNodes
@@ -247,7 +288,7 @@ func (r *RuleEngine) GenerateCaptureMoves() []SimpleMove {
 			}
 		}
 	})
-	return moves
+	return r.orderMoves(moves)
 }
 
 func isPromo(p pieces.Piece, to address.Addr) bool {
@@ -288,4 +329,67 @@ func flagFrom(score, beta, alphaOrig int) int {
 		return ttLower
 	}
 	return ttExact
+}
+
+// orderMoves scores moves for better pruning: TT move first, then MVV-LVA captures, then promotions.
+func (r *RuleEngine) orderMoves(moves []SimpleMove) []SimpleMove {
+	ttMove := SimpleMove{}
+	if entry, ok := r.tt[r.hash]; ok {
+		ttMove = entry.move
+	}
+	type scored struct {
+		m     SimpleMove
+		score int
+	}
+	scoredMoves := make([]scored, 0, len(moves))
+	for _, m := range moves {
+		scoredMoves = append(scoredMoves, scored{m: m, score: r.moveScore(m, ttMove)})
+	}
+	sort.Slice(scoredMoves, func(i, j int) bool {
+		return scoredMoves[i].score > scoredMoves[j].score
+	})
+	ordered := make([]SimpleMove, 0, len(moves))
+	for _, s := range scoredMoves {
+		ordered = append(ordered, s.m)
+	}
+	return ordered
+}
+
+func (r *RuleEngine) moveScore(m SimpleMove, ttMove SimpleMove) int {
+	score := 0
+	// TT move bonus
+	if m.From == ttMove.From && m.To == ttMove.To && m.Promo == ttMove.Promo {
+		score += 100000
+	}
+	attacker := r.Board.PieceAt(m.From)
+	target := r.Board.PieceAt(m.To)
+	// En passant capture approximation: treat as pawn capture value if diagonal empty
+	if target == nil && r.isCapture(m) {
+		// Fake a pawn of opposite color for scoring
+		target = pieces.NewPawn(1 - attacker.Color())
+	}
+	if target != nil {
+		score += 50000 + pieceValue(target) - pieceValue(attacker)
+	}
+	if m.Promo != 0 {
+		score += 900 // prefer promotions
+	}
+	return score
+}
+
+func pieceValue(p pieces.Piece) int {
+	switch p.(type) {
+	case *pieces.Pawn:
+		return 100
+	case *pieces.Knight:
+		return 320
+	case *pieces.Bishop:
+		return 330
+	case *pieces.Rook:
+		return 500
+	case *pieces.Queen:
+		return 900
+	default:
+		return 0
+	}
 }
