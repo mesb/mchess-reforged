@@ -8,10 +8,13 @@ import (
 )
 
 const (
-	MaxScore  = 30000
-	MinScore  = -30000
-	MateScore = 20000
-	EvalClamp = MateScore - 500
+	// MaxScore/MinScore act as search infinities.
+	MaxScore = 32000
+	MinScore = -32000
+	// MateScore bounds mate scores; distance-to-mate is expressed as MateScore - ply.
+	MateScore = 30000
+	// EvalClamp keeps quiescence from hallucinating mates.
+	EvalClamp = 29000
 )
 
 // SearchResult holds the best move found and its evaluation.
