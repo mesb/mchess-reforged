@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Copy dependencies first (caching layer)
 COPY go.mod ./
-# COPY go.sum ./ # Uncomment if you have a go.sum
+COPY go.sum ./
 
 # Copy source code
 COPY . .

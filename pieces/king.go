@@ -46,16 +46,11 @@ func (k *King) ValidMoves(from address.Addr, board BoardView, state GameStateVie
 		}
 
 		// Kingside
-		if hasRight(rights, k.color, true) &&
-			board.IsEmpty(address.MakeAddr(address.Rank(rank), address.File(5))) &&
-			board.IsEmpty(address.MakeAddr(address.Rank(rank), address.File(6))) {
+		if hasRight(rights, k.color, true) {
 			moves = append(moves, address.MakeAddr(address.Rank(rank), address.File(6)))
 		}
 		// Queenside
-		if hasRight(rights, k.color, false) &&
-			board.IsEmpty(address.MakeAddr(address.Rank(rank), address.File(1))) &&
-			board.IsEmpty(address.MakeAddr(address.Rank(rank), address.File(2))) &&
-			board.IsEmpty(address.MakeAddr(address.Rank(rank), address.File(3))) {
+		if hasRight(rights, k.color, false) {
 			moves = append(moves, address.MakeAddr(address.Rank(rank), address.File(2)))
 		}
 	}

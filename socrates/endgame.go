@@ -31,18 +31,22 @@ func (r *RuleEngine) IsFiftyMoveRule() bool {
 // IsInsufficientMaterial returns true if neither side has enough material to mate.
 // Covers: K vs K, K+B vs K, K+N vs K.
 func (r *RuleEngine) IsInsufficientMaterial() bool {
-	allPieces := r.Board.All()
-	if len(allPieces) == 2 {
-		return true // King vs King
-	}
+	count := 0
+	minorExists := false
 
-	if len(allPieces) == 3 {
-		for _, p := range allPieces {
-			switch p.(type) {
-			case *pieces.Bishop, *pieces.Knight:
-				return true // King + Minor Piece vs King
-			}
+	r.Board.ForEachPiece(func(_ address.Addr, p pieces.Piece) {
+		count++
+		switch p.(type) {
+		case *pieces.Bishop, *pieces.Knight:
+			minorExists = true
 		}
+	})
+
+	if count == 2 { // King vs King
+		return true
+	}
+	if count == 3 && minorExists { // King + minor vs King
+		return true
 	}
 
 	// (Further checks for K+B vs K+B on same color could go here)
